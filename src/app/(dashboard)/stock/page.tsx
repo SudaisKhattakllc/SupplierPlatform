@@ -9,7 +9,6 @@ import { Delivery } from "@/types";
 import { formatSAR, downloadExcel } from "@/lib/format-utils";
 import { Loader2, Download, Package } from "lucide-react";
 import { format } from "date-fns";
-import { useToast } from "@/hooks/use-toast";
 
 export default function StockPage() {
   const { data, isLoading } = useAppData();
@@ -17,13 +16,11 @@ export default function StockPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  const { toast } = useToast();
-
   // Memoize data processing to prevent recalculation on every render
-  const { enrichedDeliveries, filteredDeliveries, totalValue } = useMemo(() => {
+  const { filteredDeliveries, totalValue } = useMemo(() => {
     // Enrich deliveries with supplier names using lookup map for O(1) performance
     const supplierMap = new Map(suppliers.map((s) => [s.id, s.name]));
-    const enriched = deliveries.map((d: Delivery) => ({
+    const enriched = deliveries.map((d) => ({
       ...d,
       supplier_name: supplierMap.get(d.supplier_id) || "Unknown",
     }));

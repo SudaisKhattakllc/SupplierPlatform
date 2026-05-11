@@ -30,10 +30,7 @@ import {
   Package,
   CreditCard,
   Edit2,
-  Phone,
-  MapPin,
   Plus,
-  Download,
   FileSpreadsheet,
   FileText,
   CheckCircle,
@@ -311,25 +308,7 @@ export default function SupplierDetailPage() {
             <Button
               variant="outline"
               onClick={() => {
-                // Download PDF
-                const stockHeaders = ["Date", "Material", "Quantity", "Price/Unit", "Total Value"];
-                const stockData = filteredDeliveries.map((d) => [
-                  format(new Date(d.delivery_date), "dd MMM yyyy"),
-                  d.material_name,
-                  `${d.quantity} ${d.unit}`,
-                  formatSAR(Number(d.unit_price) || 0),
-                  formatSAR(Number(d.total_value) || 0),
-                ]);
-                
-                const paymentHeaders = ["Date", "Amount", "Method", "Reference"];
-                const paymentData = filteredPayments.map((p) => [
-                  format(new Date(p.payment_date), "dd MMM yyyy"),
-                  formatSAR(Number(p.amount) || 0),
-                  p.payment_method,
-                  p.reference_number || "-",
-                ]);
-                
-                // Combine both tables
+                // Download PDF - Combine stock and payment data
                 const allHeaders = ["Date", "Type", "Description", "Amount"];
                 const allData = [
                   ...filteredDeliveries.map((d) => [
