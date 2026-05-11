@@ -1,9 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Output static files for Vercel edge caching
-  output: 'export',
-  distDir: 'dist',
-  
   // Disable x-powered-by header for slight performance gain
   poweredByHeader: false,
   
@@ -13,11 +9,10 @@ const nextConfig = {
   // Disable source maps in production for smaller builds
   productionBrowserSourceMaps: false,
   
-  // Optimize images (if you use them)
+  // Optimize images
   images: {
     formats: ['image/webp'],
     minimumCacheTTL: 60,
-    unoptimized: true, // Required for static export
   },
   
   // Experimental features for better performance
