@@ -162,7 +162,7 @@ export default function StockPage() {
                       {format(new Date(d.delivery_date), "dd MMM yyyy")}
                     </td>
                     <td className="px-5 py-3.5 font-semibold text-[#1a1a2e]">
-                      {(d as any).supplier_name || "Unknown"}
+                      {(d as Delivery & { supplier_name?: string }).supplier_name || "Unknown"}
                     </td>
                     <td className="px-5 py-3.5 text-[#1a1a2e]">
                       {d.material_name}

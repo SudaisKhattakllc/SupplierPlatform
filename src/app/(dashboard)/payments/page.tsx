@@ -160,7 +160,7 @@ export default function PaymentsPage() {
                       {format(new Date(p.payment_date), "dd MMM yyyy")}
                     </td>
                     <td className="px-5 py-3.5 font-semibold text-[#1a1a2e]">
-                      {(p as any).supplier_name || "Unknown"}
+                      {(p as Payment & { supplier_name?: string }).supplier_name || "Unknown"}
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="capitalize text-[#64748b] text-xs">
