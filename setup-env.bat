@@ -1,0 +1,12 @@
+@echo off
+echo Setting up Supabase environment variables...
+echo.
+echo NEXT_PUBLIC_SUPABASE_URL=https://vcbldunebyayqgrxfbra.supabase.co
+echo NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZjYmxkdW5lYnlheXFncnhmYnJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NzMxMDAsImV4cCI6MjA5NDA0OTEwMH0.qL95hlogSOeXknghvQRAZhFSncEFESwbCzn7k5rU0Bc
+echo.
+echo Please manually create/update .env.local file with these values:
+echo.
+echo NEXT_PUBLIC_SUPABASE_URL=https://vcbldunebyayqgrxfbra.supabase.co
+echo NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZjYmxkdW5lYnlheXFncnhmYnJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NzMxMDAsImV4cCI6MjA5NDA0OTEwMH0.qL95hlogSOeXknghvQRAZhFSncEFESwbCzn7k5rU0Bc
+echo.
+pause

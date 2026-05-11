@@ -1,0 +1,84 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: var(--font-sans);
+  }
+  :root {
+    --background: #ffffff;
+    --foreground: #1a1a2e;
+    
+    --card: #f8fafc;
+    --card-foreground: #1a1a2e;
+    
+    --popover: #ffffff;
+    --popover-foreground: #1a1a2e;
+    
+    --primary: #f59e0b;
+    --primary-foreground: #ffffff;
+    
+    --secondary: #f1f5f9;
+    --secondary-foreground: #1a1a2e;
+    
+    --muted: #f1f5f9;
+    --muted-foreground: #64748b;
+    
+    --accent: #f1f5f9;
+    --accent-foreground: #1a1a2e;
+    
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    
+    --success: #10b981;
+    --success-foreground: #ffffff;
+
+    --border: #e2e8f0;
+    --input: #e2e8f0;
+    --ring: #f59e0b;
+    --radius: 0.5rem;
+
+    --sidebar: #1a1a2e;
+    --sidebar-foreground: #ffffff;
+    --sidebar-primary: #f59e0b;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #2d2d44;
+    --sidebar-accent-foreground: #ffffff;
+    --sidebar-border: #2d2d44;
+    --sidebar-ring: #f59e0b;
+  }
+
+  .dark {
+    /* Keep same as light for this specific design overhaul unless otherwise specified */
+    --background: #ffffff;
+    --foreground: #1a1a2e;
+    --card: #f8fafc;
+    --card-foreground: #1a1a2e;
+    --primary: #f59e0b;
+    --primary-foreground: #ffffff;
+    --border: #e2e8f0;
+    --sidebar: #1a1a2e;
+    --sidebar-foreground: #ffffff;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+    color-scheme: light;
+  }
+}
