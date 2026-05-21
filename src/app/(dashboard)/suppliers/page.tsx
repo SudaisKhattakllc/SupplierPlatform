@@ -336,7 +336,7 @@ export default function SuppliersPage() {
         <div className="flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
           <Calendar className="w-4 h-4 text-[#f59e0b]" /> Date Range:
         </div>
-        <Select value={dateFilter} onValueChange={(v: string) => setDateFilter(v)}>
+        <Select value={dateFilter} onValueChange={(v: "all" | "1m" | "3m" | "custom") => setDateFilter(v)}>
           <SelectTrigger className="w-[150px] h-9">
             <SelectValue placeholder="All Time" />
           </SelectTrigger>
