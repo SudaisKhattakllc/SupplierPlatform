@@ -51,9 +51,9 @@ export default function PurchasesPage() {
     { id: 1, item_name: "", custom_item_name: "", quantity: 1, unit_price: 0 },
   ]);
 
-  const handleItemChange = (index: number, field: string, value: any) => {
+  const handleItemChange = (index: number, field: string, value: string | number) => {
     const newItems = [...items];
-    (newItems[index] as any)[field] = value;
+    (newItems[index] as Record<string, string | number>)[field] = value;
     setItems(newItems);
   };
 
@@ -153,8 +153,9 @@ export default function PurchasesPage() {
         notes: "",
       });
       setItems([{ id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit_price: 0 }]);
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to record purchase", variant: "destructive" });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to record purchase";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }

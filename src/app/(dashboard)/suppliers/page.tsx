@@ -36,7 +36,7 @@ import {
   Filter,
   Calendar,
 } from "lucide-react";
-import { format, subMonths, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
+import { subMonths, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import QuickUpdatePopup from "@/components/QuickUpdatePopup";
@@ -336,7 +336,7 @@ export default function SuppliersPage() {
         <div className="flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
           <Calendar className="w-4 h-4 text-[#f59e0b]" /> Date Range:
         </div>
-        <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
+        <Select value={dateFilter} onValueChange={(v: string) => setDateFilter(v)}>
           <SelectTrigger className="w-[150px] h-9">
             <SelectValue placeholder="All Time" />
           </SelectTrigger>
