@@ -22,7 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
-import { Supplier, Delivery, Payment } from "@/types";
+import { Supplier, Delivery, Payment, Purchase, PurchaseItem } from "@/types";
 import { formatSAR, downloadExcel, downloadPDF } from "@/lib/format-utils";
 import {
   Loader2,
@@ -50,6 +50,8 @@ export default function SupplierDetailPage() {
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [purchaseItems, setPurchaseItems] = useState<PurchaseItem[]>([]);
   const [quickUpdateOpen, setQuickUpdateOpen] = useState(false);
   const [quickUpdateTab, setQuickUpdateTab] = useState<"stock" | "payment">("stock");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -88,6 +90,24 @@ export default function SupplierDetailPage() {
         .order("payment_date", { ascending: false });
       if (pError) throw pError;
       setPayments(pData || []);
+
+      const { data: purData, error: purError } = await supabase
+        .from("purchases")
+        .select("*")
+        .eq("supplier_id", id)
+        .order("purchase_date", { ascending: false });
+      if (purError) throw purError;
+      setPurchases(purData || []);
+
+      if (purData && purData.length > 0) {
+        const purchaseIds = purData.map(p => p.id);
+        const { data: piData, error: piError } = await supabase
+          .from("purchase_items")
+          .select("*")
+          .in("purchase_id", purchaseIds);
+        if (piError) throw piError;
+        setPurchaseItems(piData || []);
+      }
     } catch (error: unknown) {
       toast({
         title: "Error loading supplier",
@@ -122,17 +142,99 @@ export default function SupplierDetailPage() {
     });
   }, [payments, fromDate, toDate]);
 
+  const filteredPurchases = useMemo(() => {
+    return purchases.filter((p) => {
+      const date = new Date(p.purchase_date);
+      if (fromDate && date < new Date(fromDate)) return false;
+      if (toDate && date > new Date(toDate)) return false;
+      return true;
+    });
+  }, [purchases, fromDate, toDate]);
+
   const totalDelivered = filteredDeliveries.reduce(
     (acc: number, curr: Delivery) => acc + (Number(curr.total_value) || 0),
     0
+  ) + filteredPurchases.reduce(
+    (acc: number, curr: Purchase) => acc + (Number(curr.total_amount) || 0),
+    0
   );
+  
   const totalPaid = filteredPayments.reduce(
     (acc: number, curr: Payment) => acc + (Number(curr.amount) || 0),
+    0
+  ) + filteredPurchases.reduce(
+    (acc: number, curr: Purchase) => acc + (Number(curr.payment_amount) || 0),
     0
   );
   const balanceDue = totalDelivered - totalPaid;
   
   const isFullyPaid = balanceDue <= 0 && totalDelivered > 0;
+
+  const combinedStock = useMemo(() => {
+    const list = [
+      ...filteredDeliveries.map(d => ({
+        id: d.id,
+        date: d.delivery_date,
+        material_name: d.material_name,
+        quantity: d.quantity,
+        unit: d.unit,
+        unit_price: d.unit_price,
+        total_value: d.total_value,
+        type: "Delivery"
+      })),
+      ...filteredPurchases.flatMap(p => 
+        purchaseItems.filter(pi => pi.purchase_id === p.id).map(pi => ({
+          id: pi.id,
+          date: p.purchase_date,
+          material_name: pi.item_name,
+          quantity: pi.quantity,
+          unit: "pcs",
+          unit_price: pi.unit_price,
+          total_value: pi.total_price,
+          type: "Purchase"
+        }))
+      )
+    ];
+    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [filteredDeliveries, filteredPurchases, purchaseItems]);
+
+  const combinedPayments = useMemo(() => {
+    const list = [
+      ...filteredPayments.map(p => ({
+        id: p.id,
+        date: p.payment_date,
+        amount: p.amount,
+        method: p.payment_method,
+        reference: p.reference_number
+      })),
+      ...filteredPurchases.filter(p => Number(p.payment_amount) > 0).map(p => ({
+        id: `pay-${p.id}`,
+        date: p.purchase_date,
+        amount: p.payment_amount,
+        method: "Purchase Payment",
+        reference: p.branch
+      }))
+    ];
+    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [filteredPayments, filteredPurchases]);
+
+  const itemsBroughtSummary = useMemo(() => {
+    const itemsMap = new Map<string, number>();
+    filteredDeliveries.forEach(d => {
+      if (d.material_name) {
+        itemsMap.set(d.material_name, (itemsMap.get(d.material_name) || 0) + Number(d.quantity || 0));
+      }
+    });
+    filteredPurchases.forEach(pur => {
+      const purItems = purchaseItems.filter(pi => pi.purchase_id === pur.id);
+      purItems.forEach(pi => {
+        if (pi.item_name) {
+          itemsMap.set(pi.item_name, (itemsMap.get(pi.item_name) || 0) + Number(pi.quantity || 0));
+        }
+      });
+    });
+    return Array.from(itemsMap.entries()).map(([name, qty]) => `${qty} ${name}`).join(", ");
+  }, [filteredDeliveries, filteredPurchases, purchaseItems]);
 
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -258,6 +360,21 @@ export default function SupplierDetailPage() {
           </Button>
         </div>
       </div>
+
+      {/* Items Brought Summary */}
+      {(itemsBroughtSummary || fromDate || toDate) && (
+        <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm p-4 mt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="w-5 h-5 text-[#f59e0b]" />
+            <h2 className="text-lg font-bold text-[#1a1a2e]">Items Brought Summary</h2>
+          </div>
+          {itemsBroughtSummary ? (
+            <p className="text-[#1a1a2e] text-sm font-medium">{itemsBroughtSummary}</p>
+          ) : (
+            <p className="text-[#64748b] text-sm">No items found for this period.</p>
+          )}
+        </div>
+      )}
 
       {/* Date Filters & Download */}
       <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm p-4 space-y-4">
@@ -385,15 +502,15 @@ export default function SupplierDetailPage() {
           <div className="px-5 py-4 border-b border-[#e2e8f0] bg-[#f8fafc] flex items-center justify-between">
             <h2 className="text-sm font-bold text-[#1a1a2e] uppercase tracking-wider flex items-center gap-2">
               <Package className="w-4 h-4 text-[#f59e0b]" /> Stock History
-              {filteredDeliveries.length !== deliveries.length && (
+              {combinedStock.length > 0 && (
                 <span className="text-xs font-normal text-[#64748b] bg-white px-2 py-0.5 rounded-full border">
-                  {filteredDeliveries.length} of {deliveries.length}
+                  {combinedStock.length} items
                 </span>
               )}
             </h2>
           </div>
           <div className="overflow-x-auto">
-            {filteredDeliveries.length === 0 ? (
+            {combinedStock.length === 0 ? (
               <div className="py-12 text-center text-[#64748b] text-sm">
                 No stock entries yet.
               </div>
@@ -419,13 +536,14 @@ export default function SupplierDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredDeliveries.map((d) => (
+                  {combinedStock.map((d) => (
                     <tr
                       key={d.id}
                       className="border-b border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
                     >
                       <td className="px-5 py-3 text-[#64748b] text-xs">
-                        {format(new Date(d.delivery_date), "dd MMM yyyy")}
+                        {format(new Date(d.date), "dd MMM yyyy")}
+                        <div className="text-[9px] text-[#f59e0b] mt-0.5 uppercase tracking-wider">{d.type}</div>
                       </td>
                       <td className="px-5 py-3 font-semibold text-[#1a1a2e]">
                         {d.material_name}
@@ -455,9 +573,9 @@ export default function SupplierDetailPage() {
           <div className="px-5 py-4 border-b border-[#e2e8f0] bg-[#f8fafc] flex items-center justify-between">
             <h2 className="text-sm font-bold text-[#1a1a2e] uppercase tracking-wider flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-[#10b981]" /> Payment History
-              {filteredPayments.length !== payments.length && (
+              {combinedPayments.length > 0 && (
                 <span className="text-xs font-normal text-[#64748b] bg-white px-2 py-0.5 rounded-full border">
-                  {filteredPayments.length} of {payments.length}
+                  {combinedPayments.length} items
                 </span>
               )}
             </h2>
@@ -472,7 +590,7 @@ export default function SupplierDetailPage() {
             </Button>
           </div>
           <div className="overflow-x-auto">
-            {filteredPayments.length === 0 ? (
+            {combinedPayments.length === 0 ? (
               <div className="py-12 text-center text-[#64748b] text-sm">
                 No payment records yet.
               </div>
@@ -492,24 +610,24 @@ export default function SupplierDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredPayments.map((p) => (
+                  {combinedPayments.map((p) => (
                     <tr
                       key={p.id}
                       className="border-b border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
                     >
                       <td className="px-5 py-3 text-[#64748b] text-xs">
-                        {format(new Date(p.payment_date), "dd MMM yyyy")}
+                        {format(new Date(p.date), "dd MMM yyyy")}
                       </td>
                       <td className="px-5 py-3 text-right font-bold text-[#1a1a2e]">
                         {formatSAR(Number(p.amount) || 0)}
                       </td>
                       <td className="px-5 py-3">
                         <span className="capitalize text-[#64748b] text-xs">
-                          {p.payment_method}
+                          {p.method}
                         </span>
-                        {p.reference_number && (
+                        {p.reference && (
                           <span className="text-[#64748b] text-xs ml-1">
-                            ({p.reference_number})
+                            ({p.reference})
                           </span>
                         )}
                       </td>

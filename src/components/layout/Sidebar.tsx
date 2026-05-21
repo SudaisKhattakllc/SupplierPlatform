@@ -12,12 +12,14 @@ import {
   Package2,
   Menu,
   X,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/suppliers", label: "Suppliers", icon: Users },
+  { href: "/purchases", label: "Purchases", icon: ShoppingCart },
   { href: "/stock", label: "Stock", icon: Package },
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/reports", label: "Reports", icon: BarChart3 },

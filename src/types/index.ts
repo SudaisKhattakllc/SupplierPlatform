@@ -45,3 +45,24 @@ export interface SupplierSummary {
   total_paid: number
   balance_due: number
 }
+
+export interface Purchase {
+  id: string
+  supplier_id: string
+  branch: string
+  purchase_date: string
+  payment_amount: number
+  total_amount: number
+  notes?: string
+  created_at: string
+  suppliers?: { name: string }
+}
+
+export interface PurchaseItem {
+  id: string
+  purchase_id: string
+  item_name: string
+  quantity: number
+  unit_price: number
+  total_price: number
+}

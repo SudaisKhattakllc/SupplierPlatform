@@ -34,7 +34,9 @@ import {
   Trash2,
   CheckCircle,
   Filter,
+  Calendar,
 } from "lucide-react";
+import { format, subMonths, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import QuickUpdatePopup from "@/components/QuickUpdatePopup";
@@ -58,6 +60,9 @@ export default function SuppliersPage() {
   
   // Filter state: 'all' | 'paid' | 'unpaid' | 'new'
   const [filterStatus, setFilterStatus] = useState<"all" | "paid" | "unpaid">("all");
+  const [dateFilter, setDateFilter] = useState<"all" | "1m" | "3m" | "custom">("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   
   const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
 
@@ -164,9 +169,78 @@ export default function SuppliersPage() {
     setIsModalOpen(true);
   };
 
+  const computedSummaries = useMemo(() => {
+    let fromDate: Date | null = null;
+    let toDate: Date | null = null;
+    const now = new Date();
+
+    if (dateFilter === "1m") {
+      fromDate = subMonths(now, 1);
+      toDate = now;
+    } else if (dateFilter === "3m") {
+      fromDate = subMonths(now, 3);
+      toDate = now;
+    } else if (dateFilter === "custom") {
+      if (customFrom) fromDate = startOfDay(new Date(customFrom));
+      if (customTo) toDate = endOfDay(new Date(customTo));
+    }
+
+    return suppliers.map((s) => {
+      let sDeliveries = data.deliveries.filter((d) => d.supplier_id === s.id);
+      let sPayments = data.payments.filter((p) => p.supplier_id === s.id);
+      let sPurchases = (data.purchases || []).filter((pur) => pur.supplier_id === s.id);
+
+      if (fromDate) {
+        sDeliveries = sDeliveries.filter((d) => isAfter(new Date(d.delivery_date), fromDate!));
+        sPayments = sPayments.filter((p) => isAfter(new Date(p.payment_date), fromDate!));
+        sPurchases = sPurchases.filter((pur) => isAfter(new Date(pur.purchase_date), fromDate!));
+      }
+      if (toDate) {
+        sDeliveries = sDeliveries.filter((d) => isBefore(new Date(d.delivery_date), toDate!));
+        sPayments = sPayments.filter((p) => isBefore(new Date(p.payment_date), toDate!));
+        sPurchases = sPurchases.filter((pur) => isBefore(new Date(pur.purchase_date), toDate!));
+      }
+
+      const total_delivered = sDeliveries.reduce((acc, d) => acc + (Number(d.total_value) || 0), 0) +
+        sPurchases.reduce((acc, pur) => acc + (Number(pur.total_amount) || 0), 0);
+      const total_paid = sPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0) +
+        sPurchases.reduce((acc, pur) => acc + (Number(pur.payment_amount) || 0), 0);
+
+      // Aggregate items brought
+      const itemsMap = new Map<string, number>();
+      
+      // Legacy deliveries
+      sDeliveries.forEach(d => {
+        if (d.material_name) {
+          itemsMap.set(d.material_name, (itemsMap.get(d.material_name) || 0) + Number(d.quantity || 0));
+        }
+      });
+      
+      // New purchases items
+      sPurchases.forEach(pur => {
+        const purItems = (data.purchaseItems || []).filter(pi => pi.purchase_id === pur.id);
+        purItems.forEach(pi => {
+          if (pi.item_name) {
+            itemsMap.set(pi.item_name, (itemsMap.get(pi.item_name) || 0) + Number(pi.quantity || 0));
+          }
+        });
+      });
+
+      const itemsBrought = Array.from(itemsMap.entries()).map(([name, qty]) => `${qty} ${name}`).join(", ");
+
+      return {
+        ...s,
+        total_delivered,
+        total_paid,
+        balance_due: total_delivered - total_paid,
+        items_brought: itemsBrought
+      };
+    });
+  }, [suppliers, data.deliveries, data.payments, data.purchases, data.purchaseItems, dateFilter, customFrom, customTo]);
+
   const filteredSummaries = useMemo(
     () =>
-      summaries.filter((s) => {
+      computedSummaries.filter((s) => {
         // Text search
         const matchesSearch =
           s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -179,7 +253,7 @@ export default function SuppliersPage() {
         
         return matchesSearch;
       }),
-    [summaries, searchTerm, filterStatus]
+    [computedSummaries, searchTerm, filterStatus]
   );
 
   const getStatusInfo = useMemo(() => (summary: SupplierSummary) => {
@@ -258,6 +332,30 @@ export default function SuppliersPage() {
         </div>
       </div>
 
+      <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-lg border border-[#e2e8f0]">
+        <div className="flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
+          <Calendar className="w-4 h-4 text-[#f59e0b]" /> Date Range:
+        </div>
+        <Select value={dateFilter} onValueChange={(v: any) => setDateFilter(v)}>
+          <SelectTrigger className="w-[150px] h-9">
+            <SelectValue placeholder="All Time" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Time</SelectItem>
+            <SelectItem value="1m">Last 1 Month</SelectItem>
+            <SelectItem value="3m">Last 3 Months</SelectItem>
+            <SelectItem value="custom">Custom</SelectItem>
+          </SelectContent>
+        </Select>
+        {dateFilter === "custom" && (
+          <div className="flex items-center gap-2">
+            <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="h-9 w-auto" />
+            <span className="text-[#64748b]">to</span>
+            <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="h-9 w-auto" />
+          </div>
+        )}
+      </div>
+
       {/* Cards Grid */}
       {isLoading && summaries.length === 0 ? (
         <div className="flex justify-center py-20">
@@ -311,6 +409,11 @@ export default function SuppliersPage() {
                     </p>
                   )}
                   <p>Material: {summary.material_type || "—"}</p>
+                  {summary.items_brought && (
+                    <div className="mt-2 p-2 bg-[#f8fafc] rounded text-xs text-[#1a1a2e] border border-[#e2e8f0]">
+                      <span className="font-bold text-[#64748b]">Items Brought:</span> {summary.items_brought}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 mb-4 text-center">
