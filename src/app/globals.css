@@ -16,69 +16,72 @@
     --font-sans: var(--font-sans);
   }
   :root {
-    --background: #ffffff;
-    --foreground: #1a1a2e;
-    
-    --card: #f8fafc;
-    --card-foreground: #1a1a2e;
-    
-    --popover: #ffffff;
-    --popover-foreground: #1a1a2e;
-    
-    --primary: #f59e0b;
+    --background: #0d1526;
+    --foreground: #e2e8f0;
+
+    --card: #121e36;
+    --card-foreground: #e2e8f0;
+
+    --popover: #121e36;
+    --popover-foreground: #e2e8f0;
+
+    --primary: #3b82f6;
     --primary-foreground: #ffffff;
-    
-    --secondary: #f1f5f9;
-    --secondary-foreground: #1a1a2e;
-    
-    --muted: #f1f5f9;
-    --muted-foreground: #64748b;
-    
-    --accent: #f1f5f9;
-    --accent-foreground: #1a1a2e;
-    
+
+    --secondary: #1a2d52;
+    --secondary-foreground: #e2e8f0;
+
+    --muted: #1a2d52;
+    --muted-foreground: #8faac3;
+
+    --accent: #1a2d52;
+    --accent-foreground: #e2e8f0;
+
     --destructive: #ef4444;
     --destructive-foreground: #ffffff;
-    
+
     --success: #10b981;
     --success-foreground: #ffffff;
 
-    --border: #e2e8f0;
-    --input: #e2e8f0;
-    --ring: #f59e0b;
+    --border: #1e3464;
+    --input: #1e3464;
+    --ring: #3b82f6;
     --radius: 0.5rem;
 
-    --sidebar: #1a1a2e;
-    --sidebar-foreground: #ffffff;
-    --sidebar-primary: #f59e0b;
+    --sidebar: #0a1020;
+    --sidebar-foreground: #e2e8f0;
+    --sidebar-primary: #3b82f6;
     --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #2d2d44;
+    --sidebar-accent: #162040;
     --sidebar-accent-foreground: #ffffff;
-    --sidebar-border: #2d2d44;
-    --sidebar-ring: #f59e0b;
-  }
-
-  .dark {
-    /* Keep same as light for this specific design overhaul unless otherwise specified */
-    --background: #ffffff;
-    --foreground: #1a1a2e;
-    --card: #f8fafc;
-    --card-foreground: #1a1a2e;
-    --primary: #f59e0b;
-    --primary-foreground: #ffffff;
-    --border: #e2e8f0;
-    --sidebar: #1a1a2e;
-    --sidebar-foreground: #ffffff;
+    --sidebar-border: #1e3464;
+    --sidebar-ring: #3b82f6;
   }
 
   * {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-[#0d1526] text-[#e2e8f0];
   }
   html {
     @apply font-sans;
-    color-scheme: light;
+    color-scheme: dark;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0a1020;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1e3464;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6;
   }
 }

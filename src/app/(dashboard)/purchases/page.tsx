@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,23 +14,13 @@ import {
 import { useAppData } from "@/hooks/use-data";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Trash2, ShoppingCart, Calendar } from "lucide-react";
+import { Loader2, Plus, Trash2, ShoppingCart, Calendar, Package, ChevronDown, ChevronUp } from "lucide-react";
+import { formatSAR } from "@/lib/format-utils";
+import { format } from "date-fns";
 
-const PREDEFINED_BRANCHES = [
-  "Al Shifa",
-  "Ad Dillam",
-  "Mohammadia",
-  "Exit 9 Number",
-];
-
-const PREDEFINED_ITEMS = [
-  "drums",
-  "oil",
-  "paint Grease",
-  "scrap",
-  "IBCS different litres type",
-  "plastic drums",
-];
+const PREDEFINED_BRANCHES = ["Al Shifa", "Ad Dillam", "Mohammadia", "Exit 9 Number"];
+const PREDEFINED_ITEMS = ["drums", "oil", "paint Grease", "scrap", "IBCS different litres type", "plastic drums"];
+const UNITS = ["pcs", "kg", "litre", "CBM", "SQM", "ton", "box", "set", "other"];
 
 export default function PurchasesPage() {
   const { data: appData, isLoading: dataLoading, mutate } = useAppData();
@@ -38,6 +28,7 @@ export default function PurchasesPage() {
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
+  const [formOpen, setFormOpen] = useState(true);
   const [formData, setFormData] = useState({
     supplier_id: "",
     purchase_date: new Date().toISOString().split("T")[0],
@@ -48,7 +39,7 @@ export default function PurchasesPage() {
   });
 
   const [items, setItems] = useState([
-    { id: 1, item_name: "", custom_item_name: "", quantity: 1, unit_price: 0 },
+    { id: 1, item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 },
   ]);
 
   const handleItemChange = (index: number, field: string, value: string | number) => {
@@ -58,55 +49,37 @@ export default function PurchasesPage() {
   };
 
   const addItem = () => {
-    setItems([
-      ...items,
-      { id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit_price: 0 },
-    ]);
+    setItems([...items, { id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 }]);
   };
 
   const removeItem = (index: number) => {
-    if (items.length > 1) {
-      const newItems = [...items];
-      newItems.splice(index, 1);
-      setItems(newItems);
-    }
+    if (items.length > 1) { const n = [...items]; n.splice(index, 1); setItems(n); }
   };
 
-  const calculateTotalAmount = () => {
-    return items.reduce((acc, item) => acc + item.quantity * item.unit_price, 0);
-  };
+  const calculateTotalAmount = () =>
+    items.reduce((acc, item) => acc + item.quantity * item.unit_price, 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!formData.supplier_id) {
-      toast({ title: "Error", description: "Please select a supplier", variant: "destructive" });
-      return;
+      toast({ title: "Error", description: "Please select a supplier", variant: "destructive" }); return;
     }
-
     const finalBranch = formData.branch === "Custom" ? formData.custom_branch : formData.branch;
     if (!finalBranch) {
-      toast({ title: "Error", description: "Please specify a branch", variant: "destructive" });
-      return;
+      toast({ title: "Error", description: "Please specify a branch", variant: "destructive" }); return;
     }
-
-    // Validate items
     for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const finalItemName = item.item_name === "Custom" ? item.custom_item_name : item.item_name;
+      const finalItemName = items[i].item_name === "Custom" ? items[i].custom_item_name : items[i].item_name;
       if (!finalItemName) {
-        toast({ title: "Error", description: `Please specify item name for item #${i + 1}`, variant: "destructive" });
-        return;
+        toast({ title: "Error", description: `Please specify item name for item #${i + 1}`, variant: "destructive" }); return;
       }
     }
 
     setIsLoading(true);
-
     try {
       const totalAmount = calculateTotalAmount();
       const paymentAmount = Number(formData.payment_amount) || 0;
 
-      // 1. Insert Purchase
       const { data: purchaseData, error: purchaseError } = await supabase
         .from("purchases")
         .insert({
@@ -119,10 +92,8 @@ export default function PurchasesPage() {
         })
         .select()
         .single();
-
       if (purchaseError) throw purchaseError;
 
-      // 2. Insert Items
       const purchaseItemsData = items.map((item) => {
         const finalItemName = item.item_name === "Custom" ? item.custom_item_name : item.item_name;
         return {
@@ -133,245 +104,343 @@ export default function PurchasesPage() {
           total_price: item.quantity * item.unit_price,
         };
       });
-
-      const { error: itemsError } = await supabase
-        .from("purchase_items")
-        .insert(purchaseItemsData);
-
+      const { error: itemsError } = await supabase.from("purchase_items").insert(purchaseItemsData);
       if (itemsError) throw itemsError;
 
-      toast({ title: "Success", description: "Purchase recorded successfully!" });
+      toast({ title: "Success ✓", description: "Purchase recorded & supplier balance updated!" });
       mutate();
-      
-      // Reset form
-      setFormData({
-        supplier_id: "",
-        purchase_date: new Date().toISOString().split("T")[0],
-        branch: "",
-        custom_branch: "",
-        payment_amount: "",
-        notes: "",
-      });
-      setItems([{ id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit_price: 0 }]);
+      setFormData({ supplier_id: "", purchase_date: new Date().toISOString().split("T")[0], branch: "", custom_branch: "", payment_amount: "", notes: "" });
+      setItems([{ id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 }]);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to record purchase";
-      toast({ title: "Error", description: errorMessage, variant: "destructive" });
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to record purchase", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Build enriched purchases list
+  const enrichedPurchases = useMemo(() => {
+    const supplierMap = new Map(suppliers.map((s) => [s.id, s.name]));
+    return appData.purchases.map((pur) => {
+      const purItems = (appData.purchaseItems || []).filter((pi) => pi.purchase_id === pur.id);
+      return {
+        ...pur,
+        supplier_name: supplierMap.get(pur.supplier_id) || "Unknown",
+        items: purItems,
+      };
+    });
+  }, [appData.purchases, appData.purchaseItems, suppliers]);
+
+  const selectedSupplierName = suppliers.find(s => s.id === formData.supplier_id)?.name || "";
+
   if (dataLoading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="w-10 h-10 animate-spin text-[#f59e0b]" />
+        <Loader2 className="w-10 h-10 animate-spin text-[#3b82f6]" />
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1000px] mx-auto w-full animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-4 md:p-6 space-y-5 max-w-[1200px] mx-auto w-full">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] flex items-center justify-center">
+          <ShoppingCart className="w-5 h-5 text-white" />
+        </div>
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-[#1a1a2e] tracking-tight flex items-center gap-2">
-            <ShoppingCart className="w-8 h-8 text-[#f59e0b]" /> Record Purchase
-          </h1>
-          <p className="text-sm text-[#64748b] font-medium mt-0.5">
-            Add new stock purchases from your suppliers
-          </p>
+          <h1 className="text-2xl font-bold text-white">Purchases</h1>
+          <p className="text-sm text-[#8faac3]">Record new stock purchases from your suppliers</p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl border border-[#e2e8f0] shadow-sm space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-1.5">
-            <Label className="text-[#1a1a2e] text-sm font-medium">Supplier *</Label>
-            <Select
-              value={formData.supplier_id}
-              onValueChange={(val) => setFormData({ ...formData, supplier_id: val })}
-            >
-              <SelectTrigger className="border-[#e2e8f0] h-11">
-                <SelectValue placeholder="Select a supplier" />
-              </SelectTrigger>
-              <SelectContent>
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      {/* New Purchase Form */}
+      <div className="bg-[#121e36] border border-[#1e3464] rounded-xl overflow-hidden shadow-xl">
+        {/* Form Header Toggle */}
+        <button
+          type="button"
+          onClick={() => setFormOpen(!formOpen)}
+          className="w-full flex items-center justify-between px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] hover:bg-[#162040] transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Plus className="w-4 h-4 text-[#3b82f6]" />
+            <span className="font-bold text-white">New Purchase Entry</span>
           </div>
-          
-          <div className="space-y-1.5">
-            <Label className="text-[#1a1a2e] text-sm font-medium">Purchase Date *</Label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748b]" />
-              <Input
-                type="date"
-                required
-                value={formData.purchase_date}
-                onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })}
-                className="pl-10 border-[#e2e8f0] h-11"
-              />
-            </div>
-          </div>
+          {formOpen ? <ChevronUp className="w-4 h-4 text-[#8faac3]" /> : <ChevronDown className="w-4 h-4 text-[#8faac3]" />}
+        </button>
 
-          <div className="space-y-1.5">
-            <Label className="text-[#1a1a2e] text-sm font-medium">Branch *</Label>
-            <Select
-              value={formData.branch}
-              onValueChange={(val) => setFormData({ ...formData, branch: val })}
-            >
-              <SelectTrigger className="border-[#e2e8f0] h-11">
-                <SelectValue placeholder="Select Branch" />
-              </SelectTrigger>
-              <SelectContent>
-                {PREDEFINED_BRANCHES.map((b) => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
-                <SelectItem value="Custom">Custom / Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        {formOpen && (
+          <form onSubmit={handleSubmit} className="p-5 space-y-5">
+            {/* Top row: Supplier | Date | Branch */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-[#8faac3] text-xs font-bold uppercase tracking-wider">Supplier *</Label>
+                <Select value={formData.supplier_id} onValueChange={(val) => setFormData({ ...formData, supplier_id: val })}>
+                  <SelectTrigger className="h-11 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]">
+                    <SelectValue placeholder="Select supplier" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#121e36] border-[#1e3464]">
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id} className="text-[#e2e8f0] focus:bg-[#1e3464]">{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {formData.branch === "Custom" && (
-            <div className="space-y-1.5">
-              <Label className="text-[#1a1a2e] text-sm font-medium">Custom Branch Name *</Label>
-              <Input
-                required
-                placeholder="Enter branch name"
-                value={formData.custom_branch}
-                onChange={(e) => setFormData({ ...formData, custom_branch: e.target.value })}
-                className="border-[#e2e8f0] h-11"
-              />
+              <div className="space-y-1.5">
+                <Label className="text-[#8faac3] text-xs font-bold uppercase tracking-wider">Purchase Date *</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8faac3]" />
+                  <Input
+                    type="date"
+                    required
+                    value={formData.purchase_date}
+                    onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })}
+                    className="pl-10 h-11 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[#8faac3] text-xs font-bold uppercase tracking-wider">Branch *</Label>
+                <Select value={formData.branch} onValueChange={(val) => setFormData({ ...formData, branch: val })}>
+                  <SelectTrigger className="h-11 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]">
+                    <SelectValue placeholder="Select Branch" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#121e36] border-[#1e3464]">
+                    {PREDEFINED_BRANCHES.map((b) => (
+                      <SelectItem key={b} value={b} className="text-[#e2e8f0] focus:bg-[#1e3464]">{b}</SelectItem>
+                    ))}
+                    <SelectItem value="Custom" className="text-[#e2e8f0] focus:bg-[#1e3464]">Custom / Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            {formData.branch === "Custom" && (
+              <div className="space-y-1.5">
+                <Label className="text-[#8faac3] text-xs font-bold uppercase tracking-wider">Custom Branch Name *</Label>
+                <Input required placeholder="Enter branch name" value={formData.custom_branch}
+                  onChange={(e) => setFormData({ ...formData, custom_branch: e.target.value })}
+                  className="h-11 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]" />
+              </div>
+            )}
+
+            {/* Items Table */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-white font-bold text-sm flex items-center gap-2">
+                  <Package className="w-4 h-4 text-[#3b82f6]" /> Items Purchased
+                </Label>
+                <button type="button" onClick={addItem}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e3464] hover:bg-[#3b82f6] text-[#8faac3] hover:text-white rounded-lg text-xs font-bold transition-all">
+                  <Plus className="w-3.5 h-3.5" /> Add Item
+                </button>
+              </div>
+
+              {/* Items Header */}
+              <div className="hidden md:grid grid-cols-12 gap-2 px-3 py-2 bg-[#0a1422] rounded-lg border border-[#1e3464]">
+                <div className="col-span-4 text-xs font-bold text-[#8faac3] uppercase">Item Name</div>
+                <div className="col-span-2 text-xs font-bold text-[#8faac3] uppercase">Qty</div>
+                <div className="col-span-2 text-xs font-bold text-[#8faac3] uppercase">Unit</div>
+                <div className="col-span-2 text-xs font-bold text-[#8faac3] uppercase">Unit Price</div>
+                <div className="col-span-1 text-xs font-bold text-[#8faac3] uppercase text-right">Total</div>
+                <div className="col-span-1"></div>
+              </div>
+
+              {items.map((item, index) => (
+                <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 p-3 bg-[#0d1526] border border-[#1e3464] rounded-lg">
+                  <div className="md:col-span-4">
+                    <Select value={item.item_name} onValueChange={(val) => handleItemChange(index, "item_name", val)}>
+                      <SelectTrigger className="h-10 bg-[#121e36] border-[#1e3464] text-[#e2e8f0] text-sm">
+                        <SelectValue placeholder="Select item" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#121e36] border-[#1e3464]">
+                        {PREDEFINED_ITEMS.map((i) => (
+                          <SelectItem key={i} value={i} className="text-[#e2e8f0] focus:bg-[#1e3464] capitalize">{i}</SelectItem>
+                        ))}
+                        <SelectItem value="Custom" className="text-[#e2e8f0] focus:bg-[#1e3464]">Custom / Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {item.item_name === "Custom" && (
+                      <Input required placeholder="Custom item name" value={item.custom_item_name}
+                        onChange={(e) => handleItemChange(index, "custom_item_name", e.target.value)}
+                        className="mt-1.5 h-10 bg-[#121e36] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3] text-sm" />
+                    )}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Input type="number" min="1" step="0.01" required value={item.quantity}
+                      onChange={(e) => handleItemChange(index, "quantity", Number(e.target.value))}
+                      className="h-10 bg-[#121e36] border-[#1e3464] text-[#e2e8f0] text-sm" placeholder="Qty" />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Select value={item.unit} onValueChange={(val) => handleItemChange(index, "unit", val)}>
+                      <SelectTrigger className="h-10 bg-[#121e36] border-[#1e3464] text-[#e2e8f0] text-sm">
+                        <SelectValue placeholder="Unit" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#121e36] border-[#1e3464]">
+                        {UNITS.map((u) => (
+                          <SelectItem key={u} value={u} className="text-[#e2e8f0] focus:bg-[#1e3464] uppercase">{u}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Input type="number" min="0" step="0.01" required value={item.unit_price}
+                      onChange={(e) => handleItemChange(index, "unit_price", Number(e.target.value))}
+                      className="h-10 bg-[#121e36] border-[#1e3464] text-[#e2e8f0] text-sm" placeholder="Price" />
+                  </div>
+
+                  <div className="md:col-span-1 flex items-center justify-end">
+                    <span className="text-sm font-bold text-[#3b82f6]">
+                      {(item.quantity * item.unit_price).toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="md:col-span-1 flex items-center justify-end">
+                    {items.length > 1 && (
+                      <button type="button" onClick={() => removeItem(index)}
+                        className="w-8 h-8 rounded-lg bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white transition-all flex items-center justify-center">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Payment & Total */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-[#1e3464]">
+              <div className="space-y-1.5">
+                <Label className="text-[#8faac3] text-xs font-bold uppercase tracking-wider">Payment Made Now (Optional)</Label>
+                <Input type="number" min="0" step="0.01" placeholder="0.00" value={formData.payment_amount}
+                  onChange={(e) => setFormData({ ...formData, payment_amount: e.target.value })}
+                  className="h-11 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[#8faac3] text-xs font-bold uppercase tracking-wider">Notes</Label>
+                <Input placeholder="Optional notes" value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="h-11 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[#8faac3] text-xs font-bold uppercase tracking-wider">Total Purchase Amount</Label>
+                <div className="h-11 flex items-center px-4 bg-gradient-to-r from-[#1e3464] to-[#162040] border border-[#3b82f6]/40 rounded-lg">
+                  <span className="text-lg font-bold text-[#3b82f6]">SAR {calculateTotalAmount().toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Submit */}
+            <div className="flex items-center justify-between pt-2">
+              {selectedSupplierName && (
+                <div className="text-sm text-[#8faac3]">
+                  Supplier: <span className="text-white font-bold">{selectedSupplierName}</span>
+                  <span className="ml-2 text-xs text-[#3b82f6]">→ Balance will be updated automatically</span>
+                </div>
+              )}
+              <Button type="submit" disabled={isLoading}
+                className="ml-auto bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] text-white font-bold h-11 px-8 shadow-lg">
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShoppingCart className="w-4 h-4 mr-2" />}
+                Save Purchase Record
+              </Button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* Purchases History Table */}
+      <div className="bg-[#121e36] border border-[#1e3464] rounded-xl overflow-hidden shadow-xl">
+        <div className="px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-white flex items-center gap-2">
+              <Package className="w-4 h-4 text-[#3b82f6]" /> Purchase History
+            </h2>
+            <p className="text-xs text-[#8faac3] mt-0.5">{enrichedPurchases.length} total purchases</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          {enrichedPurchases.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <ShoppingCart className="w-10 h-10 text-[#1e3464] mb-3" />
+              <p className="text-[#8faac3] text-sm">No purchase records yet.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#1e3464]">
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">#</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Date</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Supplier</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Branch</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Items</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Amount</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Paid</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enrichedPurchases.map((pur, idx) => {
+                  const balance = pur.total_amount - pur.payment_amount;
+                  return (
+                    <tr key={pur.id} className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors">
+                      <td className="px-4 py-3.5 text-[#8faac3] text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3.5 text-[#8faac3] text-xs whitespace-nowrap">
+                        {format(new Date(pur.purchase_date), "dd MMM yyyy")}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="font-semibold text-white">{pur.supplier_name}</span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="px-2 py-0.5 bg-[#1e3464] text-[#8faac3] rounded text-xs">{pur.branch}</span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-wrap gap-1">
+                          {pur.items.length > 0 ? pur.items.map((pi, i) => (
+                            <span key={i} className="text-xs bg-[#162040] border border-[#1e3464] text-[#8faac3] px-1.5 py-0.5 rounded capitalize">
+                              {pi.item_name} × {pi.quantity}
+                            </span>
+                          )) : <span className="text-[#8faac3] text-xs">—</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-white font-bold">
+                        {formatSAR(pur.total_amount)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-emerald-400">
+                        {formatSAR(pur.payment_amount)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono font-bold">
+                        <span className={balance > 0 ? "text-red-400" : "text-emerald-400"}>
+                          {formatSAR(balance)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
-
-        <div className="border-t border-[#e2e8f0] pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <Label className="text-lg font-bold text-[#1a1a2e]">Items Purchased</Label>
-            <Button type="button" onClick={addItem} variant="outline" className="border-[#f59e0b] text-[#f59e0b] hover:bg-amber-50 h-9 gap-1.5">
-              <Plus className="w-4 h-4" /> Add Item
-            </Button>
-          </div>
-          
-          <div className="space-y-4">
-            {items.map((item, index) => (
-              <div key={item.id} className="p-4 bg-[#f8fafc] border border-[#e2e8f0] rounded-lg flex flex-col md:flex-row gap-4 items-start md:items-end">
-                <div className="flex-1 w-full space-y-1.5">
-                  <Label className="text-xs text-[#64748b] font-medium">Item Name *</Label>
-                  <Select
-                    value={item.item_name}
-                    onValueChange={(val) => handleItemChange(index, "item_name", val)}
-                  >
-                    <SelectTrigger className="bg-white border-[#e2e8f0] h-10">
-                      <SelectValue placeholder="Select item" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PREDEFINED_ITEMS.map((i) => (
-                        <SelectItem key={i} value={i} className="capitalize">{i}</SelectItem>
-                      ))}
-                      <SelectItem value="Custom">Custom / Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {item.item_name === "Custom" && (
-                  <div className="flex-1 w-full space-y-1.5">
-                    <Label className="text-xs text-[#64748b] font-medium">Custom Item *</Label>
-                    <Input
-                      required
-                      placeholder="Item name"
-                      value={item.custom_item_name}
-                      onChange={(e) => handleItemChange(index, "custom_item_name", e.target.value)}
-                      className="bg-white border-[#e2e8f0] h-10"
-                    />
-                  </div>
-                )}
-
-                <div className="w-full md:w-[120px] space-y-1.5">
-                  <Label className="text-xs text-[#64748b] font-medium">Quantity *</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    required
-                    value={item.quantity}
-                    onChange={(e) => handleItemChange(index, "quantity", Number(e.target.value))}
-                    className="bg-white border-[#e2e8f0] h-10"
-                  />
-                </div>
-
-                <div className="w-full md:w-[150px] space-y-1.5">
-                  <Label className="text-xs text-[#64748b] font-medium">Unit Price *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    value={item.unit_price}
-                    onChange={(e) => handleItemChange(index, "unit_price", Number(e.target.value))}
-                    className="bg-white border-[#e2e8f0] h-10"
-                  />
-                </div>
-                
-                <div className="w-full md:w-[150px] space-y-1.5">
-                  <Label className="text-xs text-[#64748b] font-medium">Total</Label>
-                  <div className="h-10 flex items-center px-3 bg-white border border-[#e2e8f0] rounded-md text-sm font-bold text-[#1a1a2e]">
-                    {(item.quantity * item.unit_price).toFixed(2)}
-                  </div>
-                </div>
-
-                {items.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => removeItem(index)}
-                    className="h-10 w-10 p-0 border-red-200 text-red-500 hover:bg-red-50 shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="border-t border-[#e2e8f0] pt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-1.5">
-            <Label className="text-[#1a1a2e] text-sm font-medium">Payment Made Now (Optional)</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              value={formData.payment_amount}
-              onChange={(e) => setFormData({ ...formData, payment_amount: e.target.value })}
-              className="border-[#e2e8f0] h-11"
-            />
-          </div>
-          
-          <div className="space-y-1.5">
-            <Label className="text-[#1a1a2e] text-sm font-medium">Total Purchase Amount</Label>
-            <div className="h-11 flex items-center px-4 bg-[#f8fafc] border border-[#e2e8f0] rounded-md text-lg font-bold text-[#1a1a2e]">
-              SAR {calculateTotalAmount().toFixed(2)}
+        {enrichedPurchases.length > 0 && (
+          <div className="px-5 py-3 bg-[#0a1422] border-t border-[#1e3464] flex items-center justify-end gap-6">
+            <div>
+              <span className="text-xs text-[#8faac3]">Total Purchases: </span>
+              <span className="text-sm font-bold text-white">{formatSAR(enrichedPurchases.reduce((a, p) => a + p.total_amount, 0))}</span>
+            </div>
+            <div>
+              <span className="text-xs text-[#8faac3]">Total Paid: </span>
+              <span className="text-sm font-bold text-emerald-400">{formatSAR(enrichedPurchases.reduce((a, p) => a + p.payment_amount, 0))}</span>
+            </div>
+            <div>
+              <span className="text-xs text-[#8faac3]">Total Remaining: </span>
+              <span className="text-sm font-bold text-red-400">{formatSAR(enrichedPurchases.reduce((a, p) => a + (p.total_amount - p.payment_amount), 0))}</span>
             </div>
           </div>
-        </div>
-
-        <div className="flex justify-end pt-4">
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="bg-[#1a1a2e] hover:bg-[#2d2d44] text-white font-bold h-12 px-8 shadow-lg w-full md:w-auto"
-          >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            Save Purchase Record
-          </Button>
-        </div>
-      </form>
+        )}
+      </div>
     </div>
   );
 }

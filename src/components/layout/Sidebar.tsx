@@ -36,7 +36,7 @@ export default function Sidebar() {
       {/* Mobile hamburger */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed top-4 left-4 z-50 md:hidden w-10 h-10 rounded-lg bg-[#1a1a2e] text-white flex items-center justify-center shadow-lg"
+        className="fixed top-4 left-4 z-50 md:hidden w-10 h-10 rounded-lg bg-[#0a1020] text-white flex items-center justify-center shadow-lg border border-[#1e3464]"
         aria-label="Open menu"
       >
         <Menu className="w-5 h-5" />
@@ -45,7 +45,7 @@ export default function Sidebar() {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
           onClick={closeMobile}
         />
       )}
@@ -53,23 +53,23 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 h-full w-[220px] bg-[#1a1a2e] text-white border-r border-[#2d2d44] flex flex-col z-40 transition-transform duration-300",
+          "fixed left-0 top-0 h-full w-[220px] bg-[#0a1020] text-white border-r border-[#1e3464] flex flex-col z-40 transition-transform duration-300",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
           "md:translate-x-0"
         )}
       >
         {/* Logo */}
-        <div className="px-5 py-5 border-b border-[#2d2d44] flex items-center justify-between">
+        <div className="px-5 py-5 border-b border-[#1e3464] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#f59e0b] flex items-center justify-center shadow-lg flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] flex items-center justify-center shadow-lg flex-shrink-0">
               <Package2 className="w-5 h-5 text-white" />
             </div>
             <div>
               <p className="font-bold text-white text-sm leading-tight">SupplierTrack</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest">KSA Management</p>
+              <p className="text-[10px] text-[#8faac3] uppercase tracking-widest">KSA Management</p>
             </div>
           </div>
-          <button onClick={closeMobile} className="md:hidden text-slate-400 hover:text-white">
+          <button onClick={closeMobile} className="md:hidden text-[#8faac3] hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -86,11 +86,16 @@ export default function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all group min-h-[44px]",
                   active
-                    ? "bg-[#f59e0b] text-white shadow-md"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                    ? "bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-white shadow-lg shadow-blue-900/30"
+                    : "text-[#8faac3] hover:text-white hover:bg-[#162040]"
                 )}
               >
-                <Icon className={cn("w-4 h-4 flex-shrink-0", active ? "text-white" : "text-slate-400 group-hover:text-white")} />
+                <Icon
+                  className={cn(
+                    "w-4 h-4 flex-shrink-0",
+                    active ? "text-white" : "text-[#8faac3] group-hover:text-white"
+                  )}
+                />
                 {label}
               </Link>
             );
@@ -98,10 +103,10 @@ export default function Sidebar() {
         </nav>
 
         {/* Footer info */}
-        <div className="px-3 pb-5 border-t border-[#2d2d44] pt-4">
+        <div className="px-3 pb-5 border-t border-[#1e3464] pt-4">
           <div className="px-3">
             <p className="text-xs font-semibold text-white truncate">SupplierTrack</p>
-            <p className="text-[11px] text-slate-400 truncate">KSA Management System</p>
+            <p className="text-[11px] text-[#8faac3] truncate">KSA Management System</p>
           </div>
         </div>
       </aside>

@@ -29,12 +29,11 @@ import {
   Search,
   Edit2,
   Eye,
-  Phone,
-  Package,
   Trash2,
   CheckCircle,
   Filter,
   Calendar,
+  Users,
 } from "lucide-react";
 import { subMonths, isAfter, isBefore, startOfDay, endOfDay } from "date-fns";
 import Link from "next/link";
@@ -57,13 +56,11 @@ export default function SuppliersPage() {
     id: string;
     name: string;
   } | null>(null);
-  
-  // Filter state: 'all' | 'paid' | 'unpaid' | 'new'
+
   const [filterStatus, setFilterStatus] = useState<"all" | "paid" | "unpaid">("all");
   const [dateFilter, setDateFilter] = useState<"all" | "1m" | "3m" | "custom">("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  
   const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
 
   const { toast } = useToast();
@@ -86,9 +83,7 @@ export default function SuppliersPage() {
   const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
-
     try {
-      // Prepare data - remove empty strings that should be null
       const dataToSave = {
         name: formData.name.trim(),
         contact_person: formData.contact_person?.trim() || null,
@@ -96,48 +91,28 @@ export default function SuppliersPage() {
         material_type: formData.material_type?.trim() || null,
         notes: formData.notes?.trim() || null,
       };
-
       if (editingSupplier) {
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from("suppliers")
           .update(dataToSave)
           .eq("id", editingSupplier.id)
           .select();
-        if (error) {
-          console.error("Update error:", error);
-          throw new Error(error.message || "Failed to update supplier");
-        }
-        console.log("Update success:", data);
+        if (error) throw new Error(error.message);
         toast({ title: "Updated", description: "Supplier updated successfully." });
       } else {
-        const { data, error } = await supabase
-          .from("suppliers")
-          .insert(dataToSave)
-          .select();
-        if (error) {
-          console.error("Insert error:", error);
-          throw new Error(error.message || "Failed to add supplier");
-        }
-        console.log("Insert success:", data);
+        const { error } = await supabase.from("suppliers").insert(dataToSave).select();
+        if (error) throw new Error(error.message);
         toast({ title: "Success", description: "New supplier added." });
       }
       setIsModalOpen(false);
       setEditingSupplier(null);
-      setFormData({
-        name: "",
-        contact_person: "",
-        phone: "",
-        material_type: "",
-        notes: "",
-      });
+      setFormData({ name: "", contact_person: "", phone: "", material_type: "", notes: "" });
       setFormErrors({});
       mutate();
     } catch (error: unknown) {
-      console.error("Save supplier error:", error);
-      const errorMessage = (error as Error)?.message || "Network error - please check your connection";
       toast({
         title: "Error",
-        description: errorMessage,
+        description: (error as Error)?.message || "Network error",
         variant: "destructive",
       });
     }
@@ -158,13 +133,7 @@ export default function SuppliersPage() {
 
   const openAddModal = () => {
     setEditingSupplier(null);
-    setFormData({
-      name: "",
-      contact_person: "",
-      phone: "",
-      material_type: "",
-      notes: "",
-    });
+    setFormData({ name: "", contact_person: "", phone: "", material_type: "", notes: "" });
     setFormErrors({});
     setIsModalOpen(true);
   };
@@ -173,14 +142,9 @@ export default function SuppliersPage() {
     let fromDate: Date | null = null;
     let toDate: Date | null = null;
     const now = new Date();
-
-    if (dateFilter === "1m") {
-      fromDate = subMonths(now, 1);
-      toDate = now;
-    } else if (dateFilter === "3m") {
-      fromDate = subMonths(now, 3);
-      toDate = now;
-    } else if (dateFilter === "custom") {
+    if (dateFilter === "1m") { fromDate = subMonths(now, 1); toDate = now; }
+    else if (dateFilter === "3m") { fromDate = subMonths(now, 3); toDate = now; }
+    else if (dateFilter === "custom") {
       if (customFrom) fromDate = startOfDay(new Date(customFrom));
       if (customTo) toDate = endOfDay(new Date(customTo));
     }
@@ -201,436 +165,305 @@ export default function SuppliersPage() {
         sPurchases = sPurchases.filter((pur) => isBefore(new Date(pur.purchase_date), toDate!));
       }
 
-      const total_delivered = sDeliveries.reduce((acc, d) => acc + (Number(d.total_value) || 0), 0) +
+      const total_delivered =
+        sDeliveries.reduce((acc, d) => acc + (Number(d.total_value) || 0), 0) +
         sPurchases.reduce((acc, pur) => acc + (Number(pur.total_amount) || 0), 0);
-      const total_paid = sPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0) +
+      const total_paid =
+        sPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0) +
         sPurchases.reduce((acc, pur) => acc + (Number(pur.payment_amount) || 0), 0);
 
-      // Aggregate items brought
-      const itemsMap = new Map<string, number>();
-      
-      // Legacy deliveries
-      sDeliveries.forEach(d => {
-        if (d.material_name) {
-          itemsMap.set(d.material_name, (itemsMap.get(d.material_name) || 0) + Number(d.quantity || 0));
-        }
-      });
-      
-      // New purchases items
-      sPurchases.forEach(pur => {
-        const purItems = (data.purchaseItems || []).filter(pi => pi.purchase_id === pur.id);
-        purItems.forEach(pi => {
-          if (pi.item_name) {
-            itemsMap.set(pi.item_name, (itemsMap.get(pi.item_name) || 0) + Number(pi.quantity || 0));
-          }
-        });
-      });
-
-      const itemsBrought = Array.from(itemsMap.entries()).map(([name, qty]) => `${qty} ${name}`).join(", ");
-
-      return {
-        ...s,
-        total_delivered,
-        total_paid,
-        balance_due: total_delivered - total_paid,
-        items_brought: itemsBrought
-      };
+      return { ...s, total_delivered, total_paid, balance_due: total_delivered - total_paid };
     });
-  }, [suppliers, data.deliveries, data.payments, data.purchases, data.purchaseItems, dateFilter, customFrom, customTo]);
+  }, [suppliers, data.deliveries, data.payments, data.purchases, dateFilter, customFrom, customTo]);
 
   const filteredSummaries = useMemo(
     () =>
       computedSummaries.filter((s) => {
-        // Text search
         const matchesSearch =
           s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (s.material_type?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
           (s.contact_person?.toLowerCase() || "").includes(searchTerm.toLowerCase());
-        
-        // Status filter
         if (filterStatus === "paid") return matchesSearch && s.balance_due <= 0 && s.total_delivered > 0;
         if (filterStatus === "unpaid") return matchesSearch && s.balance_due > 0;
-        
         return matchesSearch;
       }),
     [computedSummaries, searchTerm, filterStatus]
   );
 
-  const getStatusInfo = useMemo(() => (summary: SupplierSummary) => {
-    if (summary.total_delivered === 0)
-      return { label: "New", className: "bg-slate-100 text-slate-500" };
-    if (summary.balance_due <= 0)
-      return { label: "Paid", className: "bg-emerald-100 text-emerald-600" };
-    if (summary.total_paid > 0)
-      return { label: "Partial", className: "bg-amber-100 text-amber-600" };
-    return { label: "Unpaid", className: "bg-red-100 text-red-600" };
-  }, []);
+  const getStatusInfo = (summary: SupplierSummary) => {
+    if (summary.total_delivered === 0) return { label: "New", cls: "bg-[#1e3464] text-[#8faac3]" };
+    if (summary.balance_due <= 0) return { label: "Paid", cls: "bg-emerald-900/60 text-emerald-400" };
+    if (summary.total_paid > 0) return { label: "Partial", cls: "bg-amber-900/60 text-amber-400" };
+    return { label: "Unpaid", cls: "bg-red-900/60 text-red-400" };
+  };
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-[1400px] mx-auto w-full animate-in fade-in duration-500">
-      {/* Top Header */}
+    <div className="p-4 md:p-6 space-y-5 max-w-[1400px] mx-auto w-full">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-[#1a1a2e] tracking-tight">
-            Suppliers
-          </h1>
-          <p className="text-sm text-[#64748b] font-medium mt-0.5">
-            Manage your relationships and balances
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] flex items-center justify-center">
+            <Users className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Suppliers</h1>
+            <p className="text-sm text-[#8faac3]">Manage relationships & balances</p>
+          </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-[#64748b]" />
-            <div className="flex bg-white rounded-lg border border-[#e2e8f0] p-0.5">
-              <button
-                onClick={() => setFilterStatus("all")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
-                  filterStatus === "all"
-                    ? "bg-[#1a1a2e] text-white"
-                    : "text-[#64748b] hover:bg-[#f8fafc]"
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setFilterStatus("paid")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors flex items-center gap-1 ${
-                  filterStatus === "paid"
-                    ? "bg-emerald-500 text-white"
-                    : "text-emerald-600 hover:bg-emerald-50"
-                }`}
-              >
-                <CheckCircle className="w-3 h-3" /> Paid
-              </button>
-              <button
-                onClick={() => setFilterStatus("unpaid")}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
-                  filterStatus === "unpaid"
-                    ? "bg-red-500 text-white"
-                    : "text-red-500 hover:bg-red-50"
-                }`}
-              >
-                Unpaid
-              </button>
-            </div>
-          </div>
-          <div className="relative flex-1 md:flex-none">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748b]" />
-            <Input
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8faac3]" />
+            <input
               placeholder="Search suppliers..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 w-full md:w-[200px] border-[#e2e8f0] bg-white"
+              className="pl-9 pr-4 py-2 bg-[#121e36] border border-[#1e3464] rounded-lg text-sm text-[#e2e8f0] placeholder-[#8faac3] outline-none focus:border-[#3b82f6] w-[200px]"
             />
           </div>
           <Button
             onClick={openAddModal}
-            className="bg-[#1a1a2e] hover:bg-[#2d2d44] text-white font-bold gap-2 shadow-lg min-h-[44px]"
+            className="bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] text-white font-bold gap-2 shadow-lg"
           >
             <Plus className="w-4 h-4" /> Add New
           </Button>
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-lg border border-[#e2e8f0]">
-        <div className="flex items-center gap-2 text-sm font-bold text-[#1a1a2e]">
-          <Calendar className="w-4 h-4 text-[#f59e0b]" /> Date Range:
+      {/* Filters Bar */}
+      <div className="flex flex-col sm:flex-row items-center gap-3 bg-[#121e36] p-3 rounded-xl border border-[#1e3464]">
+        <div className="flex items-center gap-2">
+          <Filter className="w-4 h-4 text-[#8faac3]" />
+          <div className="flex bg-[#0d1526] rounded-lg border border-[#1e3464] p-0.5 gap-0.5">
+            {(["all", "paid", "unpaid"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilterStatus(f)}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-bold rounded-md transition-all capitalize",
+                  filterStatus === f
+                    ? f === "paid"
+                      ? "bg-emerald-600 text-white"
+                      : f === "unpaid"
+                      ? "bg-red-600 text-white"
+                      : "bg-[#3b82f6] text-white"
+                    : "text-[#8faac3] hover:text-white"
+                )}
+              >
+                {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
         </div>
-        <Select value={dateFilter} onValueChange={(v: "all" | "1m" | "3m" | "custom") => setDateFilter(v)}>
-          <SelectTrigger className="w-[150px] h-9">
-            <SelectValue placeholder="All Time" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Time</SelectItem>
-            <SelectItem value="1m">Last 1 Month</SelectItem>
-            <SelectItem value="3m">Last 3 Months</SelectItem>
-            <SelectItem value="custom">Custom</SelectItem>
-          </SelectContent>
-        </Select>
-        {dateFilter === "custom" && (
-          <div className="flex items-center gap-2">
-            <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="h-9 w-auto" />
-            <span className="text-[#64748b]">to</span>
-            <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="h-9 w-auto" />
+
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-[#8faac3]" />
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value as "all" | "1m" | "3m" | "custom")}
+            className="bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 py-1.5 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]"
+          >
+            <option value="all">All Time</option>
+            <option value="1m">Last 1 Month</option>
+            <option value="3m">Last 3 Months</option>
+            <option value="custom">Custom</option>
+          </select>
+          {dateFilter === "custom" && (
+            <>
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                className="bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 py-1.5 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]" />
+              <span className="text-[#8faac3] text-sm">to</span>
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                className="bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 py-1.5 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]" />
+            </>
+          )}
+        </div>
+
+        <div className="ml-auto text-sm text-[#8faac3]">
+          <span className="font-bold text-white">{filteredSummaries.length}</span> suppliers
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-[#121e36] border border-[#1e3464] rounded-xl overflow-hidden shadow-xl">
+        <div className="overflow-x-auto">
+          {isLoading && summaries.length === 0 ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-[#3b82f6]" />
+            </div>
+          ) : filteredSummaries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <Users className="w-12 h-12 text-[#1e3464] mb-3" />
+              <p className="text-[#8faac3] font-medium">No suppliers found</p>
+              <p className="text-[#8faac3] text-sm mt-1">Try adjusting your search or add a new supplier.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#0a1422] border-b border-[#1e3464]">
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">#</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Supplier Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Contact Person</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Phone</th>
+                  <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Material</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Delivered</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Paid</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Balance Due</th>
+                  <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Status</th>
+                  <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSummaries.map((summary, idx) => {
+                  const status = getStatusInfo(summary);
+                  return (
+                    <tr
+                      key={summary.id}
+                      className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors"
+                    >
+                      <td className="px-4 py-3.5 text-[#8faac3] text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {summary.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-white">{summary.name}</span>
+                          {summary.balance_due <= 0 && summary.total_delivered > 0 && (
+                            <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-[#8faac3]">{summary.contact_person || "—"}</td>
+                      <td className="px-4 py-3.5 text-[#8faac3]">{summary.phone || "—"}</td>
+                      <td className="px-4 py-3.5">
+                        {summary.material_type ? (
+                          <span className="px-2 py-0.5 bg-[#1e3464] text-[#8faac3] rounded text-xs">{summary.material_type}</span>
+                        ) : "—"}
+                      </td>
+                      <td className="px-4 py-3.5 text-right font-mono text-[#e2e8f0]">{formatSAR(summary.total_delivered)}</td>
+                      <td className="px-4 py-3.5 text-right font-mono text-emerald-400">{formatSAR(summary.total_paid)}</td>
+                      <td className="px-4 py-3.5 text-right font-mono font-bold">
+                        <span className={summary.balance_due > 0 ? "text-red-400" : "text-emerald-400"}>
+                          {formatSAR(summary.balance_due)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <span className={cn("text-xs font-bold px-2.5 py-1 rounded-full", status.cls)}>
+                          {status.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Link href={`/suppliers/${summary.id}`}>
+                            <button className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-[#3b82f6] text-[#8faac3] hover:text-white transition-all flex items-center justify-center" title="View Details">
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </Link>
+                          <button
+                            onClick={() => setSelectedSupplierForUpdate({ id: summary.id, name: summary.name, balance: summary.balance_due })}
+                            className="w-8 h-8 rounded-lg bg-amber-900/40 hover:bg-amber-600 text-amber-400 hover:text-white transition-all flex items-center justify-center" title="Quick Update"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => { const orig = suppliers.find(s => s.id === summary.id); if (orig) openEditModal(orig); }}
+                            className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-[#2563eb] text-[#8faac3] hover:text-white transition-all flex items-center justify-center" title="Edit"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm({ id: summary.id, name: summary.name })}
+                            className="w-8 h-8 rounded-lg bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white transition-all flex items-center justify-center" title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        {filteredSummaries.length > 0 && (
+          <div className="px-5 py-3 bg-[#0a1422] border-t border-[#1e3464] flex items-center justify-between">
+            <span className="text-xs text-[#8faac3]">
+              Showing <span className="text-white font-bold">{filteredSummaries.length}</span> suppliers
+            </span>
+            <div className="flex gap-6">
+              <div className="text-right">
+                <span className="text-xs text-[#8faac3]">Total Delivered: </span>
+                <span className="text-sm font-bold text-white">{formatSAR(filteredSummaries.reduce((a, s) => a + s.total_delivered, 0))}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-[#8faac3]">Total Balance: </span>
+                <span className="text-sm font-bold text-red-400">{formatSAR(filteredSummaries.reduce((a, s) => a + s.balance_due, 0))}</span>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Cards Grid */}
-      {isLoading && summaries.length === 0 ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-10 h-10 animate-spin text-[#f59e0b]" />
-        </div>
-      ) : filteredSummaries.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-[#f8fafc] rounded-xl border-2 border-dashed border-[#e2e8f0]">
-          <Package className="w-12 h-12 text-[#e2e8f0] mb-3" />
-          <h3 className="text-lg font-bold text-[#64748b]">
-            No suppliers found
-          </h3>
-          <p className="text-[#64748b] text-sm">
-            Try adjusting your search or add a new supplier.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredSummaries.map((summary) => {
-            const status = getStatusInfo(summary);
-            return (
-              <div
-                key={summary.id}
-                className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm hover:shadow-md transition-all p-5"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-[#1a1a2e] line-clamp-1">
-                      {summary.name}
-                    </h3>
-                    {summary.balance_due <= 0 && summary.total_delivered > 0 && (
-                      <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                    )}
-                  </div>
-                  <span
-                    className={cn(
-                      "text-xs font-bold px-2.5 py-1 rounded-full",
-                      status.className
-                    )}
-                  >
-                    {status.label}
-                  </span>
-                </div>
-
-                <div className="space-y-1 text-sm text-[#64748b] mb-4">
-                  {summary.contact_person && (
-                    <p>{summary.contact_person}</p>
-                  )}
-                  {summary.phone && (
-                    <p className="flex items-center gap-1">
-                      <Phone className="w-3 h-3" /> {summary.phone}
-                    </p>
-                  )}
-                  <p>Material: {summary.material_type || "—"}</p>
-                  {summary.items_brought && (
-                    <div className="mt-2 p-2 bg-[#f8fafc] rounded text-xs text-[#1a1a2e] border border-[#e2e8f0]">
-                      <span className="font-bold text-[#64748b]">Items Brought:</span> {summary.items_brought}
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 mb-4 text-center">
-                  <div className="bg-[#f8fafc] rounded-lg p-2">
-                    <div className="text-[10px] font-bold text-[#64748b] uppercase">
-                      Delivered
-                    </div>
-                    <div className="text-sm font-bold text-[#1a1a2e] truncate">
-                      {formatSAR(summary.total_delivered)}
-                    </div>
-                  </div>
-                  <div className="bg-[#f8fafc] rounded-lg p-2">
-                    <div className="text-[10px] font-bold text-[#64748b] uppercase">
-                      Paid
-                    </div>
-                    <div className="text-sm font-bold text-emerald-600 truncate">
-                      {formatSAR(summary.total_paid)}
-                    </div>
-                  </div>
-                  <div className="bg-[#f8fafc] rounded-lg p-2">
-                    <div className="text-[10px] font-bold text-[#64748b] uppercase">
-                      Owed
-                    </div>
-                    <div
-                      className={cn(
-                        "text-sm font-bold truncate",
-                        summary.balance_due > 0
-                          ? "text-red-500"
-                          : "text-emerald-600"
-                      )}
-                    >
-                      {formatSAR(summary.balance_due)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Link href={`/suppliers/${summary.id}`} className="flex-1">
-                    <Button
-                      variant="outline"
-                      className="w-full border-[#e2e8f0] hover:bg-[#f8fafc] font-bold text-xs h-9 gap-1.5 min-h-[44px]"
-                    >
-                      <Eye className="w-3.5 h-3.5" /> View
-                    </Button>
-                  </Link>
-                  <Button
-                    onClick={() =>
-                      setSelectedSupplierForUpdate({
-                        id: summary.id,
-                        name: summary.name,
-                        balance: summary.balance_due,
-                      })
-                    }
-                    className="flex-1 bg-[#f59e0b] hover:bg-amber-600 text-white font-bold text-xs h-9 gap-1.5 min-h-[44px]"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Update
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const original = suppliers.find(
-                        (s) => s.id === summary.id
-                      );
-                      if (original) openEditModal(original);
-                    }}
-                    className="w-9 h-9 p-0 border-[#e2e8f0] hover:bg-[#f8fafc] min-h-[44px] min-w-[44px]"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setDeleteConfirm({ id: summary.id, name: summary.name })}
-                    className="w-9 h-9 p-0 border-red-200 text-red-500 hover:bg-red-50 min-h-[44px] min-w-[44px]"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {/* Add/Edit Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-none shadow-2xl">
-          <div className="bg-[#1a1a2e] p-5 text-white">
+        <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-none shadow-2xl bg-[#121e36]">
+          <div className="bg-gradient-to-r from-[#0a1422] to-[#121e36] p-5 border-b border-[#1e3464]">
             <DialogHeader>
-              <DialogTitle className="text-lg font-bold">
+              <DialogTitle className="text-lg font-bold text-white">
                 {editingSupplier ? "Edit Supplier" : "Add New Supplier"}
               </DialogTitle>
-              <p className="text-slate-400 text-sm mt-1">
-                Fill in the company details below.
-              </p>
+              <p className="text-[#8faac3] text-sm mt-1">Fill in the company details below.</p>
             </DialogHeader>
           </div>
-          <form
-            onSubmit={handleSaveSupplier}
-            className="p-5 bg-white space-y-4"
-          >
+          <form onSubmit={handleSaveSupplier} className="p-5 space-y-4">
             <div className="space-y-1.5">
-              <Label
-                htmlFor="cname"
-                className="text-[#1a1a2e] text-sm font-medium"
-              >
-                Company Name *
-              </Label>
+              <Label className="text-[#e2e8f0] text-sm font-medium">Company Name *</Label>
               <Input
-                id="cname"
                 value={formData.name}
-                onChange={(e) => {
-                  setFormData({ ...formData, name: e.target.value });
-                  if (formErrors.name)
-                    setFormErrors((p) => ({ ...p, name: false }));
-                }}
-                className={cn(
-                  "border h-11",
-                  formErrors.name
-                    ? "border-red-400 ring-1 ring-red-400"
-                    : "border-[#e2e8f0]"
-                )}
+                onChange={(e) => { setFormData({ ...formData, name: e.target.value }); if (formErrors.name) setFormErrors(p => ({ ...p, name: false })); }}
+                className={cn("h-11 bg-[#0d1526] border text-[#e2e8f0] placeholder-[#8faac3]", formErrors.name ? "border-red-500" : "border-[#1e3464] focus:border-[#3b82f6]")}
                 placeholder="e.g. Saudi Marble Ltd"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label
-                  htmlFor="contact"
-                  className="text-[#1a1a2e] text-sm font-medium"
-                >
-                  Contact Person
-                </Label>
-                <Input
-                  id="contact"
-                  value={formData.contact_person}
-                  onChange={(e) =>
-                    setFormData({ ...formData, contact_person: e.target.value })
-                  }
-                  className="border-[#e2e8f0] h-11"
-                />
+                <Label className="text-[#e2e8f0] text-sm font-medium">Contact Person</Label>
+                <Input value={formData.contact_person} onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
+                  className="h-11 bg-[#0d1526] border border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3] focus:border-[#3b82f6]" />
               </div>
               <div className="space-y-1.5">
-                <Label
-                  htmlFor="phone"
-                  className="text-[#1a1a2e] text-sm font-medium"
-                >
-                  Phone
-                </Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                  className="border-[#e2e8f0] h-11"
-                />
+                <Label className="text-[#e2e8f0] text-sm font-medium">Phone</Label>
+                <Input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="h-11 bg-[#0d1526] border border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3] focus:border-[#3b82f6]" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label
-                htmlFor="mtype"
-                className="text-[#1a1a2e] text-sm font-medium"
-              >
-                Material Type
-              </Label>
-              <Select
-                value={formData.material_type}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, material_type: v })
-                }
-              >
-                <SelectTrigger className="border-[#e2e8f0] h-11">
+              <Label className="text-[#e2e8f0] text-sm font-medium">Material Type</Label>
+              <Select value={formData.material_type} onValueChange={(v) => setFormData({ ...formData, material_type: v })}>
+                <SelectTrigger className="h-11 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]">
                   <SelectValue placeholder="Select material type" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Marble">Marble</SelectItem>
-                  <SelectItem value="Granite">Granite</SelectItem>
-                  <SelectItem value="Tiles">Tiles</SelectItem>
-                  <SelectItem value="Drums">Drums</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                <SelectContent className="bg-[#121e36] border-[#1e3464]">
+                  {["Marble", "Granite", "Tiles", "Drums", "Other"].map(m => (
+                    <SelectItem key={m} value={m} className="text-[#e2e8f0] focus:bg-[#1e3464]">{m}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label
-                htmlFor="notes"
-                className="text-[#1a1a2e] text-sm font-medium"
-              >
-                Notes (optional)
-              </Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                className="border-[#e2e8f0] min-h-[80px]"
-                placeholder="Additional information..."
-              />
+              <Label className="text-[#e2e8f0] text-sm font-medium">Notes (optional)</Label>
+              <Textarea value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className="bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3] min-h-[80px] focus:border-[#3b82f6]"
+                placeholder="Additional information..." />
             </div>
             <DialogFooter className="pt-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsModalOpen(false)}
-                className="flex-1 font-bold h-11"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="flex-1 bg-[#f59e0b] hover:bg-amber-600 text-white font-bold h-11"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
+              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}
+                className="flex-1 font-bold h-11 border-[#1e3464] text-[#e2e8f0] hover:bg-[#1e3464] bg-transparent">Cancel</Button>
+              <Button type="submit" disabled={isLoading}
+                className="flex-1 bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] text-white font-bold h-11">
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                 Save Supplier
               </Button>
             </DialogFooter>
@@ -649,43 +482,37 @@ export default function SuppliersPage() {
         />
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation */}
       <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
-        <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl">
-          <div className="bg-red-500 p-5 text-white">
+        <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden border-none shadow-2xl bg-[#121e36]">
+          <div className="bg-red-900/50 p-5 border-b border-red-800">
             <DialogHeader>
-              <DialogTitle className="text-lg font-bold">Delete Supplier?</DialogTitle>
+              <DialogTitle className="text-lg font-bold text-white">Delete Supplier?</DialogTitle>
             </DialogHeader>
           </div>
-          <div className="p-5 bg-white space-y-4">
-            <p className="text-sm text-[#64748b]">
-              This will permanently delete <strong>{deleteConfirm?.name}</strong> and all their stock and payment records.
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-[#8faac3]">
+              This will permanently delete <strong className="text-white">{deleteConfirm?.name}</strong> and all their records.
             </p>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+            <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-3 text-sm text-amber-400">
               ⚠️ This action cannot be undone.
             </div>
             <DialogFooter className="pt-2 gap-2">
-              <Button variant="outline" onClick={() => setDeleteConfirm(null)} className="flex-1 font-bold h-11">
-                Cancel
-              </Button>
+              <Button variant="outline" onClick={() => setDeleteConfirm(null)}
+                className="flex-1 font-bold h-11 border-[#1e3464] text-[#e2e8f0] hover:bg-[#1e3464] bg-transparent">Cancel</Button>
               <Button
                 onClick={async () => {
                   if (!deleteConfirm) return;
                   try {
                     const { error } = await supabase.from("suppliers").delete().eq("id", deleteConfirm.id);
                     if (error) throw error;
-                    toast({ title: "Deleted", description: `${deleteConfirm.name} has been removed.` });
-                    mutate();
-                    setDeleteConfirm(null);
+                    toast({ title: "Deleted", description: `${deleteConfirm.name} removed.` });
+                    mutate(); setDeleteConfirm(null);
                   } catch (error: unknown) {
-                    toast({
-                      title: "Error",
-                      description: (error as Error)?.message || "Failed to delete",
-                      variant: "destructive",
-                    });
+                    toast({ title: "Error", description: (error as Error)?.message || "Failed to delete", variant: "destructive" });
                   }
                 }}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold h-11"
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold h-11"
               >
                 Yes, Delete
               </Button>
