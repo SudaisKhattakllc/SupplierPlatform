@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from "react";
 import { useAppData } from "@/hooks/use-data";
-import { Delivery } from "@/types";
 import { formatSAR, downloadExcel } from "@/lib/format-utils";
 import { Loader2, Download, Package, Search } from "lucide-react";
 import { format } from "date-fns";
