@@ -16,12 +16,12 @@ checkFields<Diff<{
   preferredRegion?: 'auto' | 'global' | 'home' | string | string[]
   runtime?: 'nodejs' | 'experimental-edge' | 'edge'
   maxDuration?: number
-  
+
   metadata?: any
   generateMetadata?: Function
   viewport?: any
   generateViewport?: Function
-  
+
 }, TEntry, ''>>()
 
 // Check the prop type of the entry function
@@ -70,7 +70,7 @@ type MaybeField<T, K extends string> = T extends { [k in K]: infer G } ? G exten
 
 
 
-function checkFields<_ extends { [k in keyof any]: never }>() {}
+function checkFields<_ extends { [k in keyof any]: never }>() { }
 
 // https://github.com/sindresorhus/type-fest
 type Numeric = number | bigint
