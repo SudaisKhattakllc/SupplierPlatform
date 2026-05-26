@@ -3,7 +3,6 @@
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
 import { useAppData } from "@/hooks/use-data";
 import { formatSAR, downloadExcel, downloadPDF } from "@/lib/format-utils";
 import {
@@ -82,8 +81,6 @@ export default function ReportsPage() {
 
     return combined;
   }, [deliveries, purchases, purchaseItems, summaries, reportMonth, search, dateFrom, dateTo]);
-
-
 
   const { stockReceived, paymentsMade, stillOwed } = useMemo(() => {
     const stock = summaries.reduce((acc, s) => acc + s.total_delivered, 0);
