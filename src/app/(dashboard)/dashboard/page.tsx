@@ -80,24 +80,24 @@ export default function DashboardPage() {
 
         <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Paid</span>
+            <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid</span>
             <div className="w-9 h-9 rounded-lg bg-emerald-900/40 flex items-center justify-center">
               <Wallet className="w-4 h-4 text-emerald-400" />
             </div>
           </div>
           <div className="text-2xl font-bold text-emerald-400 truncate">{formatSAR(totalPaid)}</div>
-          <div className="text-xs text-[#8faac3] mt-1">all-time payments made</div>
+          <div className="text-xs text-[#8faac3] mt-1">total payment paid</div>
         </div>
 
         <div className="bg-[#121e36] border border-red-900/40 rounded-xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Still Owed</span>
+            <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Payment Remaining</span>
             <div className="w-9 h-9 rounded-lg bg-red-900/40 flex items-center justify-center">
               <AlertCircle className="w-4 h-4 text-red-400" />
             </div>
           </div>
           <div className="text-2xl font-bold text-red-400 truncate">{formatSAR(outstandingBalance)}</div>
-          <div className="text-xs text-[#8faac3] mt-1">outstanding balance</div>
+          <div className="text-xs text-[#8faac3] mt-1">payment remaining</div>
         </div>
       </div>
 
@@ -152,8 +152,8 @@ export default function DashboardPage() {
                   <th className="text-left px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Name</th>
                   <th className="text-left px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Material</th>
                   <th className="text-right px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Delivered</th>
-                  <th className="text-right px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Paid</th>
-                  <th className="text-right px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Owed</th>
+                  <th className="text-right px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid</th>
+                  <th className="text-right px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Remaining</th>
                   <th className="text-right px-5 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>

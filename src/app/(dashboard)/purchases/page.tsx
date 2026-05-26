@@ -19,7 +19,7 @@ import { formatSAR } from "@/lib/format-utils";
 import { format } from "date-fns";
 
 const PREDEFINED_BRANCHES = ["Al Shifa", "Ad Dillam", "Mohammadia", "Exit 9 Number"];
-const PREDEFINED_ITEMS = ["drums", "oil", "paint Grease", "scrap", "IBCS different litres type", "plastic drums"];
+const PREDEFINED_ITEMS = ["Thinner", "Oil", "Grease", "Scrap", "Ibcs 1000 ltrs", "Plastic drum", "Satal"];
 const UNITS = ["pcs", "kg", "litre", "CBM", "SQM", "ton", "box", "set", "other"];
 
 export default function PurchasesPage() {

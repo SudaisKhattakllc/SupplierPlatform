@@ -2,6 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAppData } from "@/hooks/use-data";
 import { formatSAR, downloadExcel, downloadPDF } from "@/lib/format-utils";
 import {
@@ -9,102 +11,121 @@ import {
   Download,
   FileText,
   BarChart3,
-  Eye,
-  X,
   TrendingUp,
   TrendingDown,
   DollarSign,
   Users,
+  Calendar,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { SupplierSummary } from "@/types";
-import { cn } from "@/lib/utils";
 
 export default function ReportsPage() {
   const { data, isLoading } = useAppData();
-  const { summaries } = data;
+  const { summaries, deliveries, purchases, purchaseItems } = data;
   const { toast } = useToast();
-  const [viewingSupplier, setViewingSupplier] = useState<SupplierSummary | null>(null);
+  
   const [search, setSearch] = useState("");
+  const [reportMonth, setReportMonth] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  // Flat list of all entries (Deliveries and Purchases)
+  const allEntries = useMemo(() => {
+    const supplierMap = new Map(summaries.map(s => [s.id, s.name]));
+    const typeMap = new Map(summaries.map(s => [s.id, s.material_type]));
+
+    const dRows = deliveries.map(d => ({
+      id: `del-${d.id}`,
+      date: d.delivery_date,
+      type: "Delivery",
+      supplier_name: supplierMap.get(d.supplier_id) || "Unknown",
+      material: d.material_name || typeMap.get(d.supplier_id) || "N/A",
+      quantity: `${d.quantity} ${d.unit}`,
+      amount: Number(d.total_value)
+    }));
+
+    const pRows = (purchases || []).flatMap(p => {
+      const pItems = (purchaseItems || []).filter(pi => pi.purchase_id === p.id);
+      return pItems.map(pi => ({
+        id: `pur-${pi.id}`,
+        date: p.purchase_date,
+        type: "Purchase",
+        supplier_name: supplierMap.get(p.supplier_id) || "Unknown",
+        material: pi.item_name,
+        quantity: `${pi.quantity} pcs`,
+        amount: Number(pi.total_price)
+      }));
+    });
+
+    let combined = [...dRows, ...pRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // Apply date range filter if set
+    if (dateFrom && dateTo) {
+      combined = combined.filter(row => {
+        const rowDate = new Date(row.date);
+        const fromDate = new Date(dateFrom);
+        const toDate = new Date(dateTo);
+        return rowDate >= fromDate && rowDate <= toDate;
+      });
+    } else if (reportMonth !== "all") {
+      combined = combined.filter(row => row.date.startsWith(reportMonth));
+    }
+
+    if (search) {
+      const sLower = search.toLowerCase();
+      combined = combined.filter(row => 
+        row.supplier_name.toLowerCase().includes(sLower) || 
+        row.material.toLowerCase().includes(sLower) ||
+        row.type.toLowerCase().includes(sLower)
+      );
+    }
+
+    return combined;
+  }, [deliveries, purchases, purchaseItems, summaries, reportMonth, search, dateFrom, dateTo]);
+
+  const availableMonths = useMemo(() => {
+    const allDates = [
+      ...deliveries.map(d => d.delivery_date),
+      ...(purchases || []).map(p => p.purchase_date)
+    ];
+    return Array.from(new Set(allDates.map(d => d?.substring(0, 7)).filter(Boolean))).sort().reverse();
+  }, [deliveries, purchases]);
 
   const { stockReceived, paymentsMade, stillOwed } = useMemo(() => {
     const stock = summaries.reduce((acc, s) => acc + s.total_delivered, 0);
     const payments = summaries.reduce((acc, s) => acc + s.total_paid, 0);
-    const owed = summaries.reduce((acc, s) => acc + s.balance_due, 0);
+    const owed = summaries.reduce((acc, s) => acc + Math.max(s.balance_due, 0), 0);
     return { stockReceived: stock, paymentsMade: payments, stillOwed: owed };
   }, [summaries]);
 
-  const filtered = useMemo(() =>
-    summaries.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) ||
-      (s.material_type || "").toLowerCase().includes(search.toLowerCase())),
-    [summaries, search]
-  );
-
   const exportAllExcel = () => {
-    const rows = summaries.map((s) => ({
-      "Supplier Name": s.name,
-      Material: s.material_type || "N/A",
-      "Total Delivered (SAR)": s.total_delivered,
-      "Total Paid (SAR)": s.total_paid,
-      "Balance Due (SAR)": s.balance_due,
-      Status: s.balance_due > 0 ? "Unpaid" : "Settled",
+    const rows = allEntries.map((e) => ({
+      "Date": e.date,
+      "Supplier Name": e.supplier_name,
+      "Type": e.type,
+      "Material": e.material,
+      "Quantity": e.quantity,
+      "Amount (SAR)": e.amount,
     }));
-    downloadExcel(rows, "Full-Report");
-    toast({ title: "Excel Downloaded", description: "Full report saved." });
+    downloadExcel(rows, `Full-Entries-Report-${reportMonth === 'all' ? 'All' : reportMonth}`);
+    toast({ title: "Excel Downloaded", description: "Full entries report saved." });
   };
 
   const exportAllPDF = () => {
-    const headers = ["Supplier Name", "Material", "Total Delivered", "Total Paid", "Balance Due", "Status"];
-    const rows = summaries.map((s) => [
-      s.name, s.material_type || "N/A",
-      formatSAR(s.total_delivered), formatSAR(s.total_paid),
-      formatSAR(s.balance_due), s.balance_due > 0 ? "Unpaid" : "Settled",
+    const headers = ["Date", "Supplier Name", "Type", "Material", "Quantity", "Amount (SAR)"];
+    const rows = allEntries.map((e) => [
+      e.date,
+      e.supplier_name,
+      e.type,
+      e.material,
+      e.quantity,
+      formatSAR(e.amount),
     ]);
-    downloadPDF("SupplierTrack - Full Report", headers, rows, "Full-Report", [
-      { label: "Total Suppliers", value: summaries.length.toString() },
-      { label: "Stock Received", value: formatSAR(stockReceived) },
-      { label: "Payments Made", value: formatSAR(paymentsMade) },
-      { label: "Still Owed", value: formatSAR(stillOwed) },
+    downloadPDF(`SupplierTrack - Entries Report (${reportMonth === 'all' ? 'All Time' : reportMonth})`, headers, rows, `Entries-Report-${reportMonth === 'all' ? 'All' : reportMonth}`, [
+      { label: "Total Entries", value: allEntries.length.toString() },
+      { label: "Filtered Value", value: formatSAR(allEntries.reduce((a, b) => a + b.amount, 0)) },
     ]);
-    toast({ title: "PDF Downloaded", description: "Full report saved." });
-  };
-
-  const downloadSupplierPDF = (s: SupplierSummary) => {
-    const headers = ["Metric", "Value"];
-    const rows = [
-      ["Supplier Name", s.name],
-      ["Material Type", s.material_type || "N/A"],
-      ["Contact Person", s.contact_person || "N/A"],
-      ["Phone", s.phone || "N/A"],
-      ["Total Delivered", formatSAR(s.total_delivered)],
-      ["Total Paid", formatSAR(s.total_paid)],
-      ["Balance Due", formatSAR(s.balance_due)],
-      ["Status", s.balance_due > 0 ? "Unpaid" : "Settled"],
-    ];
-    downloadPDF(`SupplierTrack - ${s.name}`, headers, rows, `Report-${s.name.replace(/\s+/g, "-")}`);
-    toast({ title: "PDF Downloaded", description: `Report for ${s.name} saved.` });
-  };
-
-  const downloadSupplierExcel = (s: SupplierSummary) => {
-    const rows = [{
-      "Supplier Name": s.name,
-      "Material Type": s.material_type || "N/A",
-      "Contact Person": s.contact_person || "N/A",
-      "Phone": s.phone || "N/A",
-      "Total Delivered (SAR)": s.total_delivered,
-      "Total Paid (SAR)": s.total_paid,
-      "Balance Due (SAR)": s.balance_due,
-      "Status": s.balance_due > 0 ? "Unpaid" : "Settled",
-    }];
-    downloadExcel(rows, `Report-${s.name.replace(/\s+/g, "-")}`);
-    toast({ title: "Excel Downloaded", description: `Report for ${s.name} saved.` });
-  };
-
-  const getStatus = (s: SupplierSummary) => {
-    if (s.total_delivered === 0) return { label: "New", cls: "bg-[#1e3464] text-[#8faac3]" };
-    if (s.balance_due <= 0) return { label: "Settled", cls: "bg-emerald-900/60 text-emerald-400" };
-    if (s.total_paid > 0) return { label: "Partial", cls: "bg-amber-900/60 text-amber-400" };
-    return { label: "Unpaid", cls: "bg-red-900/60 text-red-400" };
+    toast({ title: "PDF Downloaded", description: "Full entries report saved." });
   };
 
   return (
@@ -117,17 +138,17 @@ export default function ReportsPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-white">Reports</h1>
-            <p className="text-sm text-[#8faac3]">Complete financial overview of all suppliers</p>
+            <p className="text-sm text-[#8faac3]">Detailed log of all supplier entries</p>
           </div>
         </div>
         <div className="flex gap-2">
           <Button onClick={exportAllExcel} variant="outline"
             className="gap-2 border-emerald-700 text-emerald-400 hover:bg-emerald-900/30 bg-transparent font-bold">
-            <Download className="w-4 h-4" /> Export All Excel
+            <Download className="w-4 h-4" /> Export Excel
           </Button>
           <Button onClick={exportAllPDF} variant="outline"
             className="gap-2 border-red-700 text-red-400 hover:bg-red-900/30 bg-transparent font-bold">
-            <FileText className="w-4 h-4" /> Export All PDF
+            <FileText className="w-4 h-4" /> Export PDF
           </Button>
         </div>
       </div>
@@ -148,21 +169,21 @@ export default function ReportsPage() {
           </div>
           <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Stock Received</span>
+              <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Stock Received (All)</span>
               <TrendingUp className="w-4 h-4 text-[#3b82f6]" />
             </div>
             <div className="text-2xl font-bold text-white">{formatSAR(stockReceived)}</div>
           </div>
           <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payments Made</span>
+              <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid (All)</span>
               <DollarSign className="w-4 h-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-bold text-emerald-400">{formatSAR(paymentsMade)}</div>
           </div>
           <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Still Owed</span>
+              <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Payment Remaining</span>
               <TrendingDown className="w-4 h-4 text-red-400" />
             </div>
             <div className="text-2xl font-bold text-red-400">{formatSAR(stillOwed)}</div>
@@ -170,184 +191,98 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Suppliers Table */}
+      {/* Entries Table */}
       {!isLoading && (
         <div className="bg-[#121e36] border border-[#1e3464] rounded-xl overflow-hidden shadow-xl">
-          <div className="px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] flex items-center justify-between gap-3">
-            <h2 className="font-bold text-white">All Suppliers — Detailed Report</h2>
-            <input
-              placeholder="Search suppliers..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="px-3 py-1.5 bg-[#0d1526] border border-[#1e3464] rounded-lg text-sm text-[#e2e8f0] placeholder-[#8faac3] outline-none focus:border-[#3b82f6] w-[200px]"
-            />
+          <div className="px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h2 className="font-bold text-white">Tabular Entries Log</h2>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              {/* Date Range Filter - Premium Look */}
+              <div className="flex items-center gap-2 bg-gradient-to-r from-[#1e3464] to-[#162040] border border-[#3b82f6]/40 rounded-lg p-2">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#3b82f6]" />
+                  <span className="text-xs font-bold text-[#8faac3] uppercase">From:</span>
+                  <Input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="h-8 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] text-xs w-[130px]"
+                  />
+                </div>
+                <div className="w-px h-6 bg-[#3b82f6]/30"></div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[#8faac3] uppercase">To:</span>
+                  <Input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="h-8 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] text-xs w-[130px]"
+                  />
+                </div>
+              </div>
+              {/* Search */}
+              <input
+                placeholder="Search supplier or material..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="px-3 py-1.5 bg-[#0d1526] border border-[#1e3464] rounded-lg text-sm text-[#e2e8f0] placeholder-[#8faac3] outline-none focus:border-[#3b82f6] w-[200px]"
+              />
+            </div>
           </div>
           <div className="overflow-x-auto">
-            {filtered.length === 0 ? (
+            {allEntries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <BarChart3 className="w-10 h-10 text-[#1e3464] mb-3" />
-                <p className="text-[#8faac3] text-sm">No suppliers found.</p>
+                <p className="text-[#8faac3] text-sm">No entries found.</p>
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#1e3464]">
                     <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">#</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Date</th>
                     <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Supplier Name</th>
+                    <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Type</th>
                     <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Material</th>
-                    <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Delivered</th>
-                    <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Paid</th>
-                    <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Balance Due</th>
-                    <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Status</th>
-                    <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Actions</th>
+                    <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Quantity</th>
+                    <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((s, idx) => {
-                    const status = getStatus(s);
-                    return (
-                      <tr key={s.id} className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors">
-                        <td className="px-4 py-3.5 text-[#8faac3] text-xs">{idx + 1}</td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-[#1e3464] flex items-center justify-center text-[#3b82f6] text-xs font-bold flex-shrink-0">
-                              {s.name.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="font-semibold text-white">{s.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {s.material_type
-                            ? <span className="px-2 py-0.5 bg-[#1e3464] text-[#8faac3] rounded text-xs">{s.material_type}</span>
-                            : <span className="text-[#8faac3]">—</span>}
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-mono text-[#e2e8f0]">{formatSAR(s.total_delivered)}</td>
-                        <td className="px-4 py-3.5 text-right font-mono text-emerald-400">{formatSAR(s.total_paid)}</td>
-                        <td className="px-4 py-3.5 text-right font-mono font-bold">
-                          <span className={s.balance_due > 0 ? "text-red-400" : "text-emerald-400"}>
-                            {formatSAR(s.balance_due)}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          <span className={cn("text-xs font-bold px-2.5 py-1 rounded-full", status.cls)}>
-                            {status.label}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => setViewingSupplier(s)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-[#1e3464] hover:bg-[#3b82f6] text-[#8faac3] hover:text-white rounded-lg text-xs font-bold transition-all"
-                            >
-                              <Eye className="w-3 h-3" /> View
-                            </button>
-                            <button
-                              onClick={() => downloadSupplierExcel(s)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-900/30 hover:bg-emerald-700 text-emerald-400 hover:text-white rounded-lg text-xs font-bold transition-all"
-                              title="Download Excel"
-                            >
-                              <Download className="w-3 h-3" /> XLS
-                            </button>
-                            <button
-                              onClick={() => downloadSupplierPDF(s)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-red-900/30 hover:bg-red-700 text-red-400 hover:text-white rounded-lg text-xs font-bold transition-all"
-                              title="Download PDF"
-                            >
-                              <FileText className="w-3 h-3" /> PDF
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {allEntries.map((e, idx) => (
+                    <tr key={e.id} className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors">
+                      <td className="px-4 py-3 text-[#8faac3] text-xs">{idx + 1}</td>
+                      <td className="px-4 py-3 text-[#8faac3] whitespace-nowrap">{e.date}</td>
+                      <td className="px-4 py-3 font-semibold text-white">{e.supplier_name}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 bg-[#1e3464] text-[#8faac3] rounded text-xs">
+                          {e.type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-white">{e.material}</td>
+                      <td className="px-4 py-3 text-right text-[#e2e8f0]">{e.quantity}</td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-[#3b82f6]">
+                        {formatSAR(e.amount)}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             )}
           </div>
-          {filtered.length > 0 && (
+          {allEntries.length > 0 && (
             <div className="px-5 py-3 bg-[#0a1422] border-t border-[#1e3464] flex items-center justify-between">
-              <span className="text-xs text-[#8faac3]"><span className="text-white font-bold">{filtered.length}</span> suppliers</span>
+              <span className="text-xs text-[#8faac3]"><span className="text-white font-bold">{allEntries.length}</span> entries</span>
               <div className="flex gap-6">
-                <div><span className="text-xs text-[#8faac3]">Total Delivered: </span><span className="text-sm font-bold text-white">{formatSAR(filtered.reduce((a, s) => a + s.total_delivered, 0))}</span></div>
-                <div><span className="text-xs text-[#8faac3]">Total Paid: </span><span className="text-sm font-bold text-emerald-400">{formatSAR(filtered.reduce((a, s) => a + s.total_paid, 0))}</span></div>
-                <div><span className="text-xs text-red-400">Total Owed: </span><span className="text-sm font-bold text-red-400">{formatSAR(filtered.reduce((a, s) => a + s.balance_due, 0))}</span></div>
+                <div>
+                  <span className="text-xs text-[#8faac3]">Filtered Amount: </span>
+                  <span className="text-sm font-bold text-[#3b82f6]">
+                    {formatSAR(allEntries.reduce((a, e) => a + e.amount, 0))}
+                  </span>
+                </div>
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Supplier Detail Modal */}
-      {viewingSupplier && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setViewingSupplier(null)}>
-          <div className="bg-[#121e36] border border-[#1e3464] rounded-2xl shadow-2xl w-full max-w-[520px]" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-5 bg-[#0a1422] rounded-t-2xl border-b border-[#1e3464]">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] flex items-center justify-center text-white font-bold">
-                  {viewingSupplier.name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-lg">{viewingSupplier.name}</h3>
-                  <p className="text-xs text-[#8faac3]">{viewingSupplier.material_type || "No material type"}</p>
-                </div>
-              </div>
-              <button onClick={() => setViewingSupplier(null)} className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-red-900/50 text-[#8faac3] hover:text-red-400 transition-all flex items-center justify-center">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-[#0d1526] border border-[#1e3464] rounded-xl p-4">
-                  <div className="text-xs text-[#8faac3] uppercase tracking-wider mb-1">Contact</div>
-                  <div className="text-sm font-semibold text-white">{viewingSupplier.contact_person || "—"}</div>
-                </div>
-                <div className="bg-[#0d1526] border border-[#1e3464] rounded-xl p-4">
-                  <div className="text-xs text-[#8faac3] uppercase tracking-wider mb-1">Phone</div>
-                  <div className="text-sm font-semibold text-white">{viewingSupplier.phone || "—"}</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-[#0d1526] border border-[#1e3464] rounded-xl p-4 text-center">
-                  <div className="text-xs text-[#8faac3] uppercase tracking-wider mb-2">Delivered</div>
-                  <div className="text-lg font-bold text-white">{formatSAR(viewingSupplier.total_delivered)}</div>
-                </div>
-                <div className="bg-[#0d1526] border border-emerald-800/50 rounded-xl p-4 text-center">
-                  <div className="text-xs text-emerald-400 uppercase tracking-wider mb-2">Paid</div>
-                  <div className="text-lg font-bold text-emerald-400">{formatSAR(viewingSupplier.total_paid)}</div>
-                </div>
-                <div className={cn("bg-[#0d1526] border rounded-xl p-4 text-center", viewingSupplier.balance_due > 0 ? "border-red-800/50" : "border-emerald-800/50")}>
-                  <div className={cn("text-xs uppercase tracking-wider mb-2", viewingSupplier.balance_due > 0 ? "text-red-400" : "text-emerald-400")}>Balance</div>
-                  <div className={cn("text-lg font-bold", viewingSupplier.balance_due > 0 ? "text-red-400" : "text-emerald-400")}>
-                    {formatSAR(viewingSupplier.balance_due)}
-                  </div>
-                </div>
-              </div>
-
-              {/* Status */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-[#8faac3]">Status:</span>
-                <span className={cn("text-xs font-bold px-3 py-1 rounded-full", getStatus(viewingSupplier).cls)}>
-                  {getStatus(viewingSupplier).label}
-                </span>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex gap-2 px-6 pb-6">
-              <button onClick={() => downloadSupplierExcel(viewingSupplier)}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-emerald-900/30 hover:bg-emerald-700 border border-emerald-700/50 text-emerald-400 hover:text-white rounded-xl text-sm font-bold transition-all">
-                <Download className="w-4 h-4" /> Download Excel
-              </button>
-              <button onClick={() => downloadSupplierPDF(viewingSupplier)}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-900/30 hover:bg-red-700 border border-red-700/50 text-red-400 hover:text-white rounded-xl text-sm font-bold transition-all">
-                <FileText className="w-4 h-4" /> Download PDF
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

@@ -306,8 +306,8 @@ export default function SuppliersPage() {
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Phone</th>
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Material</th>
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Delivered</th>
-                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Paid</th>
-                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Balance Due</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Remaining</th>
                   <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Status</th>
                   <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Actions</th>
                 </tr>
@@ -398,7 +398,7 @@ export default function SuppliersPage() {
                 <span className="text-sm font-bold text-white">{formatSAR(filteredSummaries.reduce((a, s) => a + s.total_delivered, 0))}</span>
               </div>
               <div className="text-right">
-                <span className="text-xs text-[#8faac3]">Total Balance: </span>
+                <span className="text-xs text-[#8faac3]">Payment Remaining: </span>
                 <span className="text-sm font-bold text-red-400">{formatSAR(filteredSummaries.reduce((a, s) => a + s.balance_due, 0))}</span>
               </div>
             </div>
@@ -446,7 +446,7 @@ export default function SuppliersPage() {
                   <SelectValue placeholder="Select material type" />
                 </SelectTrigger>
                 <SelectContent className="bg-[#121e36] border-[#1e3464]">
-                  {["Marble", "Granite", "Tiles", "Drums", "Other"].map(m => (
+                  {["Items", "Thinner", "Oil", "Grease", "Scrap", "Ibcs 1000 ltrs", "Plastic drum", "Other"].map(m => (
                     <SelectItem key={m} value={m} className="text-[#e2e8f0] focus:bg-[#1e3464]">{m}</SelectItem>
                   ))}
                 </SelectContent>

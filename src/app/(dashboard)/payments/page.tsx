@@ -158,7 +158,7 @@ export default function PaymentsPage() {
         </div>
         <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Total Balance Due</span>
+            <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Payment Remaining</span>
             <DollarSign className="w-4 h-4 text-red-400" />
           </div>
           <div className="text-2xl font-bold text-red-400">{formatSAR(totalOwed)}</div>
@@ -166,11 +166,11 @@ export default function PaymentsPage() {
         </div>
         <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Paid So Far</span>
+            <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid</span>
             <CheckCircle className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-emerald-400">{formatSAR(totalPaid)}</div>
-          <div className="text-xs text-[#8faac3] mt-1">all-time payments made</div>
+          <div className="text-xs text-[#8faac3] mt-1">total payment paid</div>
         </div>
       </div>
 
@@ -212,8 +212,8 @@ export default function PaymentsPage() {
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Material</th>
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Phone</th>
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Delivered</th>
-                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Paid</th>
-                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Balance Due</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Remaining</th>
                   <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Status</th>
                   <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Action</th>
                 </tr>
@@ -287,8 +287,8 @@ export default function PaymentsPage() {
             </span>
             <div className="flex gap-6">
               <div><span className="text-xs text-[#8faac3]">Total Delivered: </span><span className="text-sm font-bold text-white">{formatSAR(filteredBalances.reduce((a, s) => a + s.total_delivered, 0))}</span></div>
-              <div><span className="text-xs text-[#8faac3]">Total Paid: </span><span className="text-sm font-bold text-emerald-400">{formatSAR(filteredBalances.reduce((a, s) => a + s.total_paid, 0))}</span></div>
-              <div><span className="text-xs text-red-400">Balance Due: </span><span className="text-sm font-bold text-red-400">{formatSAR(filteredBalances.reduce((a, s) => a + Math.max(s.balance_due, 0), 0))}</span></div>
+              <div><span className="text-xs text-[#8faac3]">Payment Paid: </span><span className="text-sm font-bold text-emerald-400">{formatSAR(filteredBalances.reduce((a, s) => a + s.total_paid, 0))}</span></div>
+              <div><span className="text-xs text-red-400">Payment Remaining: </span><span className="text-sm font-bold text-red-400">{formatSAR(filteredBalances.reduce((a, s) => a + Math.max(s.balance_due, 0), 0))}</span></div>
             </div>
           </div>
         )}
@@ -377,7 +377,7 @@ export default function PaymentsPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-white">Pay to {payModal.supplier_name}</h3>
-                  <p className="text-xs text-red-400">Balance Due: {formatSAR(payModal.balance_due)}</p>
+                  <p className="text-xs text-red-400">Payment Remaining: {formatSAR(payModal.balance_due)}</p>
                 </div>
               </div>
               <button onClick={() => setPayModal(null)} className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-red-900/50 text-[#8faac3] hover:text-red-400 transition-all flex items-center justify-center">

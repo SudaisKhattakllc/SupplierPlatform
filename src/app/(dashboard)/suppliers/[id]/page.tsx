@@ -411,8 +411,8 @@ export default function SupplierDetailPage() {
                     {},
                     { Type: "=== SUMMARY ===" },
                     { Type: "Total Delivered", Value: formatSAR(totalDelivered) },
-                    { Type: "Total Paid", Value: formatSAR(totalPaid) },
-                    { Type: "Balance Due", Value: formatSAR(balanceDue) },
+                    { Type: "Payment Paid", Value: formatSAR(totalPaid) },
+                    { Type: "Payment Remaining", Value: formatSAR(balanceDue) },
                   ],
                   `${supplier.name}-Report`
                 );
@@ -449,8 +449,8 @@ export default function SupplierDetailPage() {
                   `${supplier.name}-Report`,
                   [
                     { label: "Total Delivered", value: formatSAR(totalDelivered) },
-                    { label: "Total Paid", value: formatSAR(totalPaid) },
-                    { label: "Balance Due", value: formatSAR(balanceDue) },
+                    { label: "Payment Paid", value: formatSAR(totalPaid) },
+                    { label: "Payment Remaining", value: formatSAR(balanceDue) },
                   ]
                 );
                 toast({ title: "PDF Downloaded", description: "Report saved to your device." });
@@ -655,7 +655,7 @@ export default function SupplierDetailPage() {
             <div className="hidden sm:block w-px h-8 bg-[#e2e8f0]" />
             <div className="text-center sm:text-left">
               <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">
-                Total Paid
+                Payment Paid
               </div>
               <div className="text-lg font-bold text-[#1a1a2e]">
                 {formatSAR(totalPaid)}
@@ -666,7 +666,7 @@ export default function SupplierDetailPage() {
           <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
             <div className="text-center sm:text-right">
               <div className="text-[10px] font-bold text-red-500 uppercase tracking-wider">
-                Balance Due
+                Payment Remaining
               </div>
               <div className="text-xl font-bold text-red-500">
                 {formatSAR(balanceDue)}
@@ -741,10 +741,13 @@ export default function SupplierDetailPage() {
                   <SelectValue placeholder="Select material type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Marble">Marble</SelectItem>
-                  <SelectItem value="Granite">Granite</SelectItem>
-                  <SelectItem value="Tiles">Tiles</SelectItem>
-                  <SelectItem value="Drums">Drums</SelectItem>
+                  <SelectItem value="Items">Items</SelectItem>
+                  <SelectItem value="Thinner">Thinner</SelectItem>
+                  <SelectItem value="Oil">Oil</SelectItem>
+                  <SelectItem value="Grease">Grease</SelectItem>
+                  <SelectItem value="Scrap">Scrap</SelectItem>
+                  <SelectItem value="Ibcs 1000 ltrs">Ibcs 1000 ltrs</SelectItem>
+                  <SelectItem value="Plastic drum">Plastic drum</SelectItem>
                   <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>
