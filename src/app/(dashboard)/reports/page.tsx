@@ -3,7 +3,6 @@
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useAppData } from "@/hooks/use-data";
 import { formatSAR, downloadExcel, downloadPDF } from "@/lib/format-utils";
 import {
@@ -25,7 +24,7 @@ export default function ReportsPage() {
   const { toast } = useToast();
   
   const [search, setSearch] = useState("");
-  const [reportMonth, setReportMonth] = useState<string>("all");
+  const [reportMonth] = useState<string>("all"); // removed setReportMonth
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -82,14 +81,6 @@ export default function ReportsPage() {
 
     return combined;
   }, [deliveries, purchases, purchaseItems, summaries, reportMonth, search, dateFrom, dateTo]);
-
-  const availableMonths = useMemo(() => {
-    const allDates = [
-      ...deliveries.map(d => d.delivery_date),
-      ...(purchases || []).map(p => p.purchase_date)
-    ];
-    return Array.from(new Set(allDates.map(d => d?.substring(0, 7)).filter(Boolean))).sort().reverse();
-  }, [deliveries, purchases]);
 
   const { stockReceived, paymentsMade, stillOwed } = useMemo(() => {
     const stock = summaries.reduce((acc, s) => acc + s.total_delivered, 0);
