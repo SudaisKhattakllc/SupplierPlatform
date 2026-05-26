@@ -20,9 +20,21 @@ export default function StockPage() {
   );
 
   // Combine deliveries + purchase items into unified stock rows
+  type StockRow = {
+    id: string | number;
+    date: string;
+    supplier_id: string;
+    supplier_name: string;
+    material: string;
+    quantity: number;
+    unit: string;
+    value: number;
+    source: "delivery" | "purchase";
+  };
+
   const allStockRows = useMemo(() => {
     // Legacy deliveries
-    const deliveryRows = deliveries.map((d) => ({
+    const deliveryRows: StockRow[] = deliveries.map((d) => ({
       id: d.id,
       date: d.delivery_date,
       supplier_id: d.supplier_id,
@@ -31,11 +43,11 @@ export default function StockPage() {
       quantity: Number(d.quantity),
       unit: d.unit || "units",
       value: Number(d.total_value) || 0,
-      source: "delivery" as const,
+      source: "delivery",
     }));
 
     // Purchase items as stock rows
-    const purchaseRows: typeof deliveryRows = [];
+    const purchaseRows: StockRow[] = [];
     (purchases || []).forEach((pur) => {
       const purItems = (purchaseItems || []).filter((pi) => pi.purchase_id === pur.id);
       purItems.forEach((pi) => {
@@ -48,7 +60,7 @@ export default function StockPage() {
           quantity: Number(pi.quantity),
           unit: "pcs",
           value: Number(pi.total_price) || 0,
-          source: "purchase" as const,
+          source: "purchase",
         });
       });
     });
