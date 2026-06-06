@@ -170,9 +170,15 @@ export default function PurchasesPage() {
       ["", "", "", "", "Payment", "", "", pur.payment_amount],
       ["", "", "", "", "", "", "", ""]
     ]);
+    const totalQuantity = enrichedPurchases.reduce((sum, purchase) =>
+      sum + (purchase.items || []).reduce((itemSum, item) => itemSum + (Number(item.quantity) || 0), 0),
+      0
+    );
+    const totalAmount = enrichedPurchases.reduce((sum, purchase) => sum + (Number(purchase.total_amount) || 0), 0);
+
     downloadPDF("Purchases Report", headers, rows, "Purchases-Report", [
-      { label: "Total Purchases", value: formatSAR(enrichedPurchases.reduce((a, p) => a + p.total_amount, 0)) },
-      { label: "Total Paid", value: formatSAR(enrichedPurchases.reduce((a, p) => a + p.payment_amount, 0)) },
+      { label: "Total Quantity", value: totalQuantity.toFixed(2) },
+      { label: "Total Amount", value: formatSAR(totalAmount) },
     ]);
     toast({ title: "PDF Downloaded", description: "Purchases exported." });
   };

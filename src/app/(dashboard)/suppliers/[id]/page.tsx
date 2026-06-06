@@ -283,11 +283,14 @@ export default function SupplierDetailPage() {
     e.preventDefault();
     if (!editDelivery) return;
     try {
+      const quantity = Number(editDeliveryForm.quantity) || 0;
+      const unitPrice = Number(editDeliveryForm.unit_price) || 0;
       const { error } = await supabase.from("deliveries").update({
         material_name: editDeliveryForm.material_name,
-        quantity: Number(editDeliveryForm.quantity) || 0,
+        quantity,
         unit: editDeliveryForm.unit,
-        unit_price: Number(editDeliveryForm.unit_price) || 0,
+        unit_price: unitPrice,
+        total_value: quantity * unitPrice,
         delivery_date: editDeliveryForm.delivery_date,
         notes: editDeliveryForm.notes || null,
       }).eq("id", editDelivery.id);

@@ -191,7 +191,9 @@ export default function SuppliersPage() {
         sPurchases = sPurchases.filter((pur) => isBefore(new Date(pur.purchase_date), toDate!));
       }
 
+      const opening_balance = Number(s.opening_balance) || 0;
       const total_delivered =
+        opening_balance +
         sDeliveries.reduce((acc, d) => acc + (Number(d.total_value) || 0), 0) +
         sPurchases.reduce((acc, pur) => acc + (Number(pur.total_amount) || 0), 0);
       const total_paid =

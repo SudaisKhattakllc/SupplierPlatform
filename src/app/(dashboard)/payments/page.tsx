@@ -46,8 +46,12 @@ export default function PaymentsPage() {
 
   // Build supplier balance summaries
   const supplierBalances = useMemo(() => {
-    // Total delivered per supplier (deliveries + purchases)
+    // Total delivered per supplier (opening_balance + deliveries + purchases)
     const deliveredMap = new Map<string, number>();
+    // Start with opening balances
+    suppliers.forEach((s) => {
+      deliveredMap.set(s.id, Number(s.opening_balance) || 0);
+    });
     data.deliveries.forEach((d) => {
       deliveredMap.set(d.supplier_id, (deliveredMap.get(d.supplier_id) || 0) + Number(d.total_value));
     });

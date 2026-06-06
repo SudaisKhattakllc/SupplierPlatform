@@ -64,8 +64,17 @@ export default function ReportsPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [search, setSearch] = useState("");
+  const [supplierSearch, setSupplierSearch] = useState("");
 
   const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
+  const filteredSuppliers = useMemo(() => {
+    const query = supplierSearch.trim().toLowerCase();
+    if (!query) return suppliers;
+    return suppliers.filter((supplier) =>
+      supplier.name.toLowerCase().includes(query) ||
+      (supplier.material_type || "").toLowerCase().includes(query)
+    );
+  }, [supplierSearch, suppliers]);
 
   const period = useMemo(() => {
     if (periodType === "all") return { from: "", to: "", label: "All Time" };
@@ -197,9 +206,14 @@ export default function ReportsPage() {
     const totalItems = statementRows.reduce((acc, row) => acc + row.total_amount, 0);
     const totalPaid = statementRows.reduce((acc, row) => acc + row.payment_amount, 0);
     const totalQty = statementRows.reduce((acc, row) => acc + row.quantity, 0);
+
     const endingBalance = supplierFilter === "all"
-      ? statementRows.reduce((acc, row) => acc + row.total_amount - row.payment_amount, 0)
+      ? Array.from(statementRows.reduce((acc, row) => {
+          acc.set(row.supplier_id, row.running_balance);
+          return acc;
+        }, new Map<string, number>()).values()).reduce((acc, balance) => acc + balance, 0)
       : statementRows.at(-1)?.running_balance || Number(supplierMap.get(supplierFilter)?.opening_balance) || 0;
+
     return { totalItems, totalPaid, totalQty, endingBalance };
   }, [statementRows, supplierFilter, supplierMap]);
 
@@ -296,17 +310,46 @@ export default function ReportsPage() {
       ) : (
         <>
           <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 relative">
               <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
                 <UserRound className="w-3.5 h-3.5" /> Supplier
               </label>
-              <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}
-                className="w-full h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]">
-                <option value="all">All Suppliers</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+              <Input
+                value={supplierSearch}
+                onChange={(e) => {
+                  setSupplierSearch(e.target.value);
+                  if (e.target.value.trim().length === 0) {
+                    setSupplierFilter("all");
+                  }
+                }}
+                placeholder="Search supplier name..."
+                className="h-10 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]"
+              />
+              <div className="absolute z-10 left-0 right-0 mt-1 rounded-lg border border-[#1e3464] bg-[#0d1526] shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSupplierFilter("all");
+                    setSupplierSearch("");
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-[#e2e8f0] hover:bg-[#162040] border-b border-[#1e3464]"
+                >
+                  All Suppliers
+                </button>
+                {filteredSuppliers.map((supplier) => (
+                  <button
+                    key={supplier.id}
+                    type="button"
+                    onClick={() => {
+                      setSupplierFilter(supplier.id);
+                      setSupplierSearch(supplier.name);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-[#e2e8f0] hover:bg-[#162040]"
+                  >
+                    {supplier.name}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
             <div>
               <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
