@@ -162,6 +162,21 @@ export default function PurchasesPage() {
     [branchFilter, enrichedPurchases]
   );
 
+  const purchaseProductSummary = useMemo(() => {
+    const productMap = new Map<string, { quantity: number; unit: string }>();
+    filteredPurchases.forEach((purchase) => {
+      (purchase.items || []).forEach((item: PurchaseItem) => {
+        const productName = item.item_name || "Unknown";
+        const existing = productMap.get(productName) || { quantity: 0, unit: "pcs" };
+        productMap.set(productName, {
+          quantity: existing.quantity + (Number(item.quantity) || 0),
+          unit: existing.unit,
+        });
+      });
+    });
+    return Array.from(productMap.entries()).map(([name, data]) => ({ name, quantity: data.quantity, unit: data.unit }));
+  }, [filteredPurchases]);
+
   const exportPurchasesExcel = () => {
     const rows: Array<Record<string, string | number | undefined>> = filteredPurchases.flatMap((pur, idx) => [
       { "#": idx + 1, Date: format(new Date(pur.purchase_date), "yyyy-MM-dd"), Supplier: pur.supplier_name, Branch: pur.branch, Item: "", Qty: "", "Unit Price": "", Total: pur.total_amount },
@@ -169,6 +184,17 @@ export default function PurchasesPage() {
       { "#": "", Date: "", Supplier: "", Branch: "", Item: "Payment", Qty: "", "Unit Price": "", Total: pur.payment_amount },
       {}
     ]);
+
+    const totalQuantity = purchaseProductSummary.reduce((sum, item) => sum + item.quantity, 0);
+    const totalAmount = filteredPurchases.reduce((sum, purchase) => sum + (Number(purchase.total_amount) || 0), 0);
+
+    rows.push({});
+    rows.push({ "#": "=== PRODUCT SUMMARY ===" });
+    purchaseProductSummary.forEach((item) => {
+      rows.push({ "#": "", Date: "", Supplier: "", Branch: "", Item: item.name, Qty: `${item.quantity} ${item.unit}`, "Unit Price": "", Total: "" });
+    });
+    rows.push({ "#": "", Date: "", Supplier: "", Branch: "", Item: "Total Quantity", Qty: totalQuantity, "Unit Price": "", Total: totalAmount });
+
     downloadExcel(rows, "Purchases-Report");
     toast({ title: "Excel Downloaded", description: "Purchases exported." });
   };
@@ -181,13 +207,11 @@ export default function PurchasesPage() {
       ["", "", "", "", "Payment", "", "", pur.payment_amount],
       ["", "", "", "", "", "", "", ""]
     ]);
-    const totalQuantity = filteredPurchases.reduce((sum, purchase) =>
-      sum + (purchase.items || []).reduce((itemSum, item) => itemSum + (Number(item.quantity) || 0), 0),
-      0
-    );
+    const totalQuantity = purchaseProductSummary.reduce((sum, item) => sum + item.quantity, 0);
     const totalAmount = filteredPurchases.reduce((sum, purchase) => sum + (Number(purchase.total_amount) || 0), 0);
 
     downloadPDF("Purchases Report", headers, rows, "Purchases-Report", [
+      ...purchaseProductSummary.map((item) => ({ label: item.name, value: `${item.quantity} ${item.unit}` })),
       { label: "Total Quantity", value: totalQuantity.toFixed(2) },
       { label: "Total Amount", value: formatSAR(totalAmount) },
     ]);

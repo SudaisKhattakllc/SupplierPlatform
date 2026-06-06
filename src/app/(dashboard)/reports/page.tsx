@@ -350,6 +350,7 @@ export default function ReportsPage() {
                 <div className="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-auto rounded-lg border border-[#1e3464] bg-[#0d1526] shadow-2xl">
                   <button
                     type="button"
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setSupplierFilter("all");
                       setSupplierSearch("");
@@ -364,6 +365,7 @@ export default function ReportsPage() {
                       <button
                         key={supplier.id}
                         type="button"
+                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => {
                           setSupplierFilter(supplier.id);
                           setSupplierSearch(supplier.name);
