@@ -99,7 +99,7 @@ export const downloadPDF = (
 
       // label
       doc.setTextColor(100, 100, 100);
-      doc.setFont(undefined, "normal");
+      doc.setFont("helvetica", "normal");
       doc.text(item.label + ":", labelX, yPos);
 
       // value: wrap to available width
