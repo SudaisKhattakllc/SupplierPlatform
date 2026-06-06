@@ -74,18 +74,42 @@ export const downloadPDF = (
   // Summary section if provided
   if (summary && summary.length > 0) {
     const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable?.finalY || 50;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginLeft = 40;
+    const marginRight = 40;
+    const labelX = marginLeft;
+    const valueX = 220; // start of value column
+
     doc.setFontSize(12);
     doc.setTextColor(26, 26, 46);
-    doc.text("Summary", 14, finalY + 15);
-    
+    doc.text("Summary", marginLeft, finalY + 15);
+
     doc.setFontSize(10);
-    let yPos = finalY + 25;
+    let yPos = finalY + 30;
+    const fontSize = 10;
+    const lineHeight = fontSize * 1.2;
+
     summary.forEach((item) => {
+      // handle page break
+      if (yPos + lineHeight * 1.5 > pageHeight - 40) {
+        doc.addPage();
+        yPos = 40;
+      }
+
+      // label
       doc.setTextColor(100, 100, 100);
-      doc.text(item.label + ":", 14, yPos);
+      doc.setFont(undefined, "normal");
+      doc.text(item.label + ":", labelX, yPos);
+
+      // value: wrap to available width
       doc.setTextColor(26, 26, 46);
-      doc.text(item.value, 60, yPos);
-      yPos += 8;
+      const availableWidth = pageWidth - valueX - marginRight;
+      const wrapped = doc.splitTextToSize(item.value, availableWidth);
+      doc.text(wrapped, valueX, yPos);
+
+      // advance y by number of wrapped lines
+      yPos += Math.max(1, wrapped.length) * lineHeight + 6;
     });
   }
   
