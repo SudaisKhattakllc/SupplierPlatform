@@ -67,7 +67,8 @@ async function fetchAll(): Promise<AppData> {
     const sPayments = paymentsBySupplier.get(s.id) || [];
     const sPurchases = purchasesBySupplier.get(s.id) || [];
 
-    const total_delivered = sDeliveries.reduce(
+    const opening_balance = Number(s.opening_balance) || 0;
+    const total_delivered = opening_balance + sDeliveries.reduce(
       (acc, d) => acc + (Number(d.total_value) || 0),
       0
     ) + sPurchases.reduce(
@@ -89,6 +90,7 @@ async function fetchAll(): Promise<AppData> {
       contact_person: s.contact_person,
       material_type: s.material_type,
       phone: s.phone,
+      opening_balance,
       total_delivered,
       total_paid,
       balance_due: total_delivered - total_paid,

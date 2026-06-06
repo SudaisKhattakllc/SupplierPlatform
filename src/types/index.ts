@@ -5,6 +5,7 @@ export interface Supplier {
   phone?: string
   email?: string
   material_type?: string
+  opening_balance?: number
   notes?: string
   created_at: string
 }
@@ -41,6 +42,7 @@ export interface SupplierSummary {
   contact_person?: string
   material_type?: string
   phone?: string
+  opening_balance?: number
   total_delivered: number
   total_paid: number
   balance_due: number

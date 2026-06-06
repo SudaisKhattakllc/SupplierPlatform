@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -27,7 +27,9 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const memoizedNavItems = useMemo(() => navItems, []);
 
   const closeMobile = () => setMobileOpen(false);
 
@@ -76,12 +78,15 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {memoizedNavItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
             return (
               <Link
                 key={href}
                 href={href}
+                prefetch={true}
+                onMouseEnter={() => router.prefetch(href)}
+                onFocus={() => router.prefetch(href)}
                 onClick={closeMobile}
                 className={cn(
                   "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all group min-h-[44px]",

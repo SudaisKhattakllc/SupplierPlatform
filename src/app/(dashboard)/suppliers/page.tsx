@@ -70,6 +70,7 @@ export default function SuppliersPage() {
     contact_person: "",
     phone: "",
     material_type: "",
+    opening_balance: "",
     notes: "",
   });
 
@@ -80,33 +81,57 @@ export default function SuppliersPage() {
     return Object.keys(errors).length === 0;
   };
 
+  const isMissingOpeningBalanceColumnError = (message: string) =>
+    /opening_balance|column.*does not exist|does not exist in the schema/i.test(message);
+
+  const buildSupplierPayload = (includeOpeningBalance = true) => {
+    const basePayload = {
+      name: formData.name.trim(),
+      contact_person: formData.contact_person?.trim() || null,
+      phone: formData.phone?.trim() || null,
+      material_type: formData.material_type?.trim() || null,
+      notes: formData.notes?.trim() || null,
+    };
+
+    return includeOpeningBalance
+      ? { ...basePayload, opening_balance: Number(formData.opening_balance) || 0 }
+      : basePayload;
+  };
+
   const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
     try {
-      const dataToSave = {
-        name: formData.name.trim(),
-        contact_person: formData.contact_person?.trim() || null,
-        phone: formData.phone?.trim() || null,
-        material_type: formData.material_type?.trim() || null,
-        notes: formData.notes?.trim() || null,
-      };
       if (editingSupplier) {
-        const { error } = await supabase
+        let result = await supabase
           .from("suppliers")
-          .update(dataToSave)
+          .update(buildSupplierPayload())
           .eq("id", editingSupplier.id)
           .select();
-        if (error) throw new Error(error.message);
+
+        if (result.error && isMissingOpeningBalanceColumnError(result.error.message)) {
+          result = await supabase
+            .from("suppliers")
+            .update(buildSupplierPayload(false))
+            .eq("id", editingSupplier.id)
+            .select();
+        }
+
+        if (result.error) throw new Error(result.error.message);
         toast({ title: "Updated", description: "Supplier updated successfully." });
       } else {
-        const { error } = await supabase.from("suppliers").insert(dataToSave).select();
-        if (error) throw new Error(error.message);
+        let result = await supabase.from("suppliers").insert(buildSupplierPayload()).select();
+
+        if (result.error && isMissingOpeningBalanceColumnError(result.error.message)) {
+          result = await supabase.from("suppliers").insert(buildSupplierPayload(false)).select();
+        }
+
+        if (result.error) throw new Error(result.error.message);
         toast({ title: "Success", description: "New supplier added." });
       }
       setIsModalOpen(false);
       setEditingSupplier(null);
-      setFormData({ name: "", contact_person: "", phone: "", material_type: "", notes: "" });
+      setFormData({ name: "", contact_person: "", phone: "", material_type: "", opening_balance: "", notes: "" });
       setFormErrors({});
       mutate();
     } catch (error: unknown) {
@@ -125,6 +150,7 @@ export default function SuppliersPage() {
       contact_person: supplier.contact_person || "",
       phone: supplier.phone || "",
       material_type: supplier.material_type || "",
+      opening_balance: String(Number(supplier.opening_balance) || 0),
       notes: supplier.notes || "",
     });
     setFormErrors({});
@@ -133,7 +159,7 @@ export default function SuppliersPage() {
 
   const openAddModal = () => {
     setEditingSupplier(null);
-    setFormData({ name: "", contact_person: "", phone: "", material_type: "", notes: "" });
+    setFormData({ name: "", contact_person: "", phone: "", material_type: "", opening_balance: "", notes: "" });
     setFormErrors({});
     setIsModalOpen(true);
   };
@@ -451,6 +477,18 @@ export default function SuppliersPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[#e2e8f0] text-sm font-medium">Opening Balance (SAR)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.opening_balance}
+                onChange={(e) => setFormData({ ...formData, opening_balance: e.target.value })}
+                className="h-11 bg-[#0d1526] border border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3] focus:border-[#3b82f6]"
+                placeholder="0.00"
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-[#e2e8f0] text-sm font-medium">Notes (optional)</Label>

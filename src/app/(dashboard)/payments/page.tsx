@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useAppData } from "@/hooks/use-data";
 import { supabase } from "@/lib/supabase";
-import { formatSAR } from "@/lib/format-utils";
+import { formatSAR, downloadExcel, downloadPDF } from "@/lib/format-utils";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2,
@@ -14,10 +14,12 @@ import {
   CheckCircle,
   Search,
   DollarSign,
+  Edit2,
   TrendingDown,
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { FileSpreadsheet, FileText } from "lucide-react";
 
 interface PayModalState {
   supplier_id: string;
@@ -32,6 +34,7 @@ export default function PaymentsPage() {
 
   const [search, setSearch] = useState("");
   const [payModal, setPayModal] = useState<PayModalState | null>(null);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [payLoading, setPayLoading] = useState(false);
   const [payForm, setPayForm] = useState({
     amount: "",
@@ -87,8 +90,26 @@ export default function PaymentsPage() {
   }, [payments, suppliers]);
 
   const openPayModal = (s: typeof supplierBalances[0]) => {
+    setEditingPaymentId(null);
     setPayModal({ supplier_id: s.id, supplier_name: s.name, balance_due: s.balance_due });
     setPayForm({ amount: s.balance_due > 0 ? s.balance_due.toFixed(2) : "", method: "cash", reference: "", date: new Date().toISOString().split("T")[0], notes: "" });
+  };
+
+  const openEditPayment = (payment: typeof enrichedPayments[0]) => {
+    const balance = supplierBalances.find((s) => s.id === payment.supplier_id)?.balance_due || 0;
+    setEditingPaymentId(payment.id);
+    setPayModal({
+      supplier_id: payment.supplier_id,
+      supplier_name: payment.supplier_name,
+      balance_due: balance + (Number(payment.amount) || 0),
+    });
+    setPayForm({
+      amount: String(Number(payment.amount) || ""),
+      method: payment.payment_method?.toLowerCase().includes("bank") ? "bank" : "cash",
+      reference: payment.reference_number || "",
+      date: payment.payment_date,
+      notes: payment.notes || "",
+    });
   };
 
   const handlePay = async (e: React.FormEvent) => {
@@ -104,14 +125,18 @@ export default function PaymentsPage() {
 
     setPayLoading(true);
     try {
-      const { error } = await supabase.from("payments").insert({
+      const paymentPayload = {
         supplier_id: payModal.supplier_id,
         amount,
         payment_method: payForm.method,
         payment_date: payForm.date,
         reference_number: payForm.reference.trim() || null,
         notes: payForm.notes.trim() || null,
-      });
+      };
+
+      const { error } = editingPaymentId
+        ? await supabase.from("payments").update(paymentPayload).eq("id", editingPaymentId)
+        : await supabase.from("payments").insert(paymentPayload);
       if (error) throw error;
 
       toast({
@@ -119,6 +144,7 @@ export default function PaymentsPage() {
         description: `${formatSAR(amount)} paid to ${payModal.supplier_name} via ${payForm.method === "cash" ? "Cash" : "Bank Transfer"}.`,
       });
       mutate();
+      setEditingPaymentId(null);
       setPayModal(null);
     } catch (error: unknown) {
       toast({ title: "Error", description: (error as Error)?.message || "Failed to record payment", variant: "destructive" });
@@ -131,6 +157,37 @@ export default function PaymentsPage() {
   const totalPaid = supplierBalances.reduce((a, s) => a + s.total_paid, 0);
   const suppliersWithBalance = supplierBalances.filter((s) => s.balance_due > 0).length;
 
+  const exportPaymentsExcel = () => {
+    const rows: Record<string, string | number>[] = enrichedPayments.map((p, idx) => ({
+      "#": idx + 1,
+      Date: format(new Date(p.payment_date), "yyyy-MM-dd"),
+      Supplier: p.supplier_name,
+      Method: p.payment_method,
+      Reference: p.reference_number || "",
+      Notes: p.notes || "",
+      Amount: Number(p.amount) || 0,
+    }));
+    downloadExcel(rows, "Payments-Report");
+    toast({ title: "Excel Downloaded", description: "Payments exported." });
+  };
+
+  const exportPaymentsPDF = () => {
+    const headers = ["#", "Date", "Supplier", "Method", "Reference", "Notes", "Amount"];
+    const rows = enrichedPayments.map((p, idx) => [
+      idx + 1,
+      format(new Date(p.payment_date), "yyyy-MM-dd"),
+      p.supplier_name,
+      p.payment_method,
+      p.reference_number || "",
+      p.notes || "",
+      formatSAR(Number(p.amount) || 0),
+    ]);
+    downloadPDF("Payments Report", headers, rows, "Payments-Report", [
+      { label: "Total Paid", value: formatSAR(enrichedPayments.reduce((a, p) => a + (Number(p.amount) || 0), 0)) },
+    ]);
+    toast({ title: "PDF Downloaded", description: "Payments exported." });
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-[1400px] mx-auto w-full space-y-5">
       {/* Header */}
@@ -142,6 +199,14 @@ export default function PaymentsPage() {
           <div>
             <h1 className="text-2xl font-bold text-white">Payments</h1>
             <p className="text-sm text-[#8faac3]">Manage outgoing payments to all suppliers</p>
+          </div>
+          <div className="ml-auto flex gap-2">
+            <button onClick={exportPaymentsExcel} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded text-sm font-bold">
+              <FileSpreadsheet className="w-4 h-4" /> Excel
+            </button>
+            <button onClick={exportPaymentsPDF} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded text-sm font-bold">
+              <FileText className="w-4 h-4" /> PDF
+            </button>
           </div>
         </div>
       </div>
@@ -319,6 +384,7 @@ export default function PaymentsPage() {
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Reference</th>
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Notes</th>
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Amount</th>
+                  <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -346,6 +412,15 @@ export default function PaymentsPage() {
                     <td className="px-4 py-3.5 text-right font-mono font-bold text-emerald-400">
                       {formatSAR(Number(p.amount) || 0)}
                     </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <button
+                        onClick={() => openEditPayment(p)}
+                        className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-[#2563eb] text-[#8faac3] hover:text-white transition-all inline-flex items-center justify-center"
+                        title="Edit payment"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -367,7 +442,7 @@ export default function PaymentsPage() {
 
       {/* PAY Modal */}
       {payModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPayModal(null)}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setPayModal(null); setEditingPaymentId(null); }}>
           <div className="bg-[#121e36] border border-[#1e3464] rounded-2xl shadow-2xl w-full max-w-[480px]" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-5 bg-[#0a1422] rounded-t-2xl border-b border-[#1e3464]">
@@ -376,11 +451,11 @@ export default function PaymentsPage() {
                   {payModal.supplier_name.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="font-bold text-white">Pay to {payModal.supplier_name}</h3>
+                  <h3 className="font-bold text-white">{editingPaymentId ? "Edit payment" : "Pay to"} {payModal.supplier_name}</h3>
                   <p className="text-xs text-red-400">Payment Remaining: {formatSAR(payModal.balance_due)}</p>
                 </div>
               </div>
-              <button onClick={() => setPayModal(null)} className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-red-900/50 text-[#8faac3] hover:text-red-400 transition-all flex items-center justify-center">
+              <button onClick={() => { setPayModal(null); setEditingPaymentId(null); }} className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-red-900/50 text-[#8faac3] hover:text-red-400 transition-all flex items-center justify-center">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -494,14 +569,14 @@ export default function PaymentsPage() {
 
               {/* Buttons */}
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setPayModal(null)}
+                <button type="button" onClick={() => { setPayModal(null); setEditingPaymentId(null); }}
                   className="flex-1 py-3 bg-[#1e3464] hover:bg-[#162040] text-[#8faac3] hover:text-white rounded-xl text-sm font-bold transition-all">
                   Cancel
                 </button>
                 <button type="submit" disabled={payLoading}
                   className="flex-1 py-3 bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-900/30">
                   {payLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                  Confirm Payment
+                  {editingPaymentId ? "Update Payment" : "Confirm Payment"}
                 </button>
               </div>
             </form>

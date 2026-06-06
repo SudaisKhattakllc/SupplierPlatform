@@ -10,15 +10,24 @@ export function formatSAR(amount: number): string {
   }).format(amount);
 }
 
-export const downloadExcel = (data: Record<string, unknown>[], filename: string) => {
-  const ws = XLSX.utils.json_to_sheet(data);
+const makeSafeFilename = (name: string) => {
+  const stamp = new Date().toISOString().slice(0, 10);
+  // replace any characters that are invalid in filenames
+  const safe = name.replace(/[^a-z0-9._\-]/gi, "-");
+  return `${safe}-${stamp}`;
+};
+
+export const downloadExcel = (data: unknown[], filename: string) => {
+  let ws: XLSX.WorkSheet;
+  if (Array.isArray(data) && data.length > 0 && Array.isArray(data[0])) {
+    ws = XLSX.utils.aoa_to_sheet(data as Array<Array<string | number | undefined>>);
+  } else {
+    ws = XLSX.utils.json_to_sheet(data as Record<string, unknown>[]);
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Report");
-  XLSX.writeFile(
-    wb,
-    filename + "-" + new Date().toLocaleDateString() + ".xlsx"
-  );
-}
+  XLSX.writeFile(wb, makeSafeFilename(filename) + ".xlsx");
+};
 
 export const downloadPDF = (
   title: string,
@@ -27,23 +36,23 @@ export const downloadPDF = (
   filename: string,
   summary?: { label: string; value: string }[]
 ) => {
-  const doc = new jsPDF();
-  
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+
   // Title
   doc.setFontSize(18);
   doc.setTextColor(26, 26, 46);
-  doc.text(title, 14, 20);
-  
+  doc.text(title, 40, 40);
+
   // Date
   doc.setFontSize(10);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28);
-  
+  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 40, 58);
+
   // Table
   autoTable(doc, {
     head: [headers],
     body: data,
-    startY: 35,
+    startY: 80,
     theme: "grid",
     headStyles: {
       fillColor: [245, 158, 11],
@@ -55,8 +64,11 @@ export const downloadPDF = (
     },
     styles: {
       fontSize: 9,
-      cellPadding: 3,
+      cellPadding: 6,
+      cellWidth: "wrap",
+      overflow: "linebreak",
     },
+    columnStyles: {},
   });
   
   // Summary section if provided
@@ -77,5 +89,5 @@ export const downloadPDF = (
     });
   }
   
-  doc.save(filename + "-" + new Date().toLocaleDateString() + ".pdf");
+  doc.save(makeSafeFilename(filename) + ".pdf");
 };

@@ -14,13 +14,23 @@ import {
 import { useAppData } from "@/hooks/use-data";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Plus, Trash2, ShoppingCart, Calendar, Package, ChevronDown, ChevronUp } from "lucide-react";
-import { formatSAR } from "@/lib/format-utils";
+import { Loader2, Plus, Trash2, ShoppingCart, Calendar, Package, ChevronDown, ChevronUp, Edit2, X, FileSpreadsheet, FileText } from "lucide-react";
+import { downloadExcel, downloadPDF, formatSAR } from "@/lib/format-utils";
 import { format } from "date-fns";
+import { Purchase, PurchaseItem } from "@/types";
 
 const PREDEFINED_BRANCHES = ["Al Shifa", "Ad Dillam", "Mohammadia", "Exit 9 Number"];
 const PREDEFINED_ITEMS = ["Thinner", "Oil", "Grease", "Scrap", "Ibcs 1000 ltrs", "Plastic drum", "Satal"];
 const UNITS = ["pcs", "kg", "litre", "CBM", "SQM", "ton", "box", "set", "other"];
+
+type PurchaseFormItem = {
+  id: string | number;
+  item_name: string;
+  custom_item_name: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+};
 
 export default function PurchasesPage() {
   const { data: appData, isLoading: dataLoading, mutate } = useAppData();
@@ -29,6 +39,7 @@ export default function PurchasesPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(true);
+  const [editingPurchase, setEditingPurchase] = useState<Purchase | null>(null);
   const [formData, setFormData] = useState({
     supplier_id: "",
     purchase_date: new Date().toISOString().split("T")[0],
@@ -38,7 +49,7 @@ export default function PurchasesPage() {
     notes: "",
   });
 
-  const [items, setItems] = useState([
+  const [items, setItems] = useState<PurchaseFormItem[]>([
     { id: 1, item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 },
   ]);
 
@@ -80,19 +91,27 @@ export default function PurchasesPage() {
       const totalAmount = calculateTotalAmount();
       const paymentAmount = Number(formData.payment_amount) || 0;
 
-      const { data: purchaseData, error: purchaseError } = await supabase
-        .from("purchases")
-        .insert({
-          supplier_id: formData.supplier_id,
-          branch: finalBranch,
-          purchase_date: formData.purchase_date,
-          payment_amount: paymentAmount,
-          total_amount: totalAmount,
-          notes: formData.notes,
-        })
-        .select()
-        .single();
+      const purchasePayload = {
+        supplier_id: formData.supplier_id,
+        branch: finalBranch,
+        purchase_date: formData.purchase_date,
+        payment_amount: paymentAmount,
+        total_amount: totalAmount,
+        notes: formData.notes,
+      };
+
+      const { data: purchaseData, error: purchaseError } = editingPurchase
+        ? await supabase.from("purchases").update(purchasePayload).eq("id", editingPurchase.id).select().single()
+        : await supabase.from("purchases").insert(purchasePayload).select().single();
       if (purchaseError) throw purchaseError;
+
+      if (editingPurchase) {
+        const { error: deleteItemsError } = await supabase
+          .from("purchase_items")
+          .delete()
+          .eq("purchase_id", editingPurchase.id);
+        if (deleteItemsError) throw deleteItemsError;
+      }
 
       const purchaseItemsData = items.map((item) => {
         const finalItemName = item.item_name === "Custom" ? item.custom_item_name : item.item_name;
@@ -109,6 +128,7 @@ export default function PurchasesPage() {
 
       toast({ title: "Success ✓", description: "Purchase recorded & supplier balance updated!" });
       mutate();
+      setEditingPurchase(null);
       setFormData({ supplier_id: "", purchase_date: new Date().toISOString().split("T")[0], branch: "", custom_branch: "", payment_amount: "", notes: "" });
       setItems([{ id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 }]);
     } catch (error: unknown) {
@@ -131,7 +151,68 @@ export default function PurchasesPage() {
     });
   }, [appData.purchases, appData.purchaseItems, suppliers]);
 
+  const exportPurchasesExcel = () => {
+    const rows: Array<Record<string, string | number | undefined>> = enrichedPurchases.flatMap((pur, idx) => [
+      { "#": idx + 1, Date: format(new Date(pur.purchase_date), "yyyy-MM-dd"), Supplier: pur.supplier_name, Branch: pur.branch, Item: "", Qty: "", "Unit Price": "", Total: pur.total_amount },
+      ...(pur.items || []).map((it: PurchaseItem) => ({ "#": "", Date: "", Supplier: "", Branch: "", Item: it.item_name, Qty: it.quantity, "Unit Price": it.unit_price, Total: it.total_price })),
+      { "#": "", Date: "", Supplier: "", Branch: "", Item: "Payment", Qty: "", "Unit Price": "", Total: pur.payment_amount },
+      {}
+    ]);
+    downloadExcel(rows, "Purchases-Report");
+    toast({ title: "Excel Downloaded", description: "Purchases exported." });
+  };
+
+  const exportPurchasesPDF = () => {
+    const headers = ["#", "Date", "Supplier", "Branch", "Item", "Qty", "Unit Price", "Total"];
+    const rows = enrichedPurchases.flatMap((pur, idx) => [
+      [idx + 1, format(new Date(pur.purchase_date), "yyyy-MM-dd"), pur.supplier_name, pur.branch, "", "", "", pur.total_amount],
+      ...((pur.items || []).map((it: PurchaseItem) => ["", "", "", "", it.item_name, it.quantity, it.unit_price.toFixed(2), it.total_price])),
+      ["", "", "", "", "Payment", "", "", pur.payment_amount],
+      ["", "", "", "", "", "", "", ""]
+    ]);
+    downloadPDF("Purchases Report", headers, rows, "Purchases-Report", [
+      { label: "Total Purchases", value: formatSAR(enrichedPurchases.reduce((a, p) => a + p.total_amount, 0)) },
+      { label: "Total Paid", value: formatSAR(enrichedPurchases.reduce((a, p) => a + p.payment_amount, 0)) },
+    ]);
+    toast({ title: "PDF Downloaded", description: "Purchases exported." });
+  };
+
   const selectedSupplierName = suppliers.find(s => s.id === formData.supplier_id)?.name || "";
+
+  const startEditPurchase = (purchase: Purchase & { items: typeof appData.purchaseItems }) => {
+    const isKnownBranch = PREDEFINED_BRANCHES.includes(purchase.branch);
+    setEditingPurchase(purchase);
+    setFormData({
+      supplier_id: purchase.supplier_id,
+      purchase_date: purchase.purchase_date,
+      branch: isKnownBranch ? purchase.branch : "Custom",
+      custom_branch: isKnownBranch ? "" : purchase.branch,
+      payment_amount: String(Number(purchase.payment_amount) || 0),
+      notes: purchase.notes || "",
+    });
+    setItems(purchase.items.length > 0
+      ? purchase.items.map((item) => {
+          const isKnownItem = PREDEFINED_ITEMS.includes(item.item_name);
+          return {
+            id: item.id,
+            item_name: isKnownItem ? item.item_name : "Custom",
+            custom_item_name: isKnownItem ? "" : item.item_name,
+            quantity: Number(item.quantity) || 1,
+            unit: "pcs",
+            unit_price: Number(item.unit_price) || 0,
+          };
+        })
+      : [{ id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 }]
+    );
+    setFormOpen(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingPurchase(null);
+    setFormData({ supplier_id: "", purchase_date: new Date().toISOString().split("T")[0], branch: "", custom_branch: "", payment_amount: "", notes: "" });
+    setItems([{ id: Date.now(), item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 }]);
+  };
 
   if (dataLoading) {
     return (
@@ -152,6 +233,14 @@ export default function PurchasesPage() {
           <h1 className="text-2xl font-bold text-white">Purchases</h1>
           <p className="text-sm text-[#8faac3]">Record new stock purchases from your suppliers</p>
         </div>
+        <div className="ml-auto flex gap-2">
+          <button onClick={exportPurchasesExcel} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded text-sm font-bold">
+            <FileSpreadsheet className="w-4 h-4" /> Excel
+          </button>
+          <button onClick={exportPurchasesPDF} className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded text-sm font-bold">
+            <FileText className="w-4 h-4" /> PDF
+          </button>
+        </div>
       </div>
 
       {/* New Purchase Form */}
@@ -164,7 +253,7 @@ export default function PurchasesPage() {
         >
           <div className="flex items-center gap-2">
             <Plus className="w-4 h-4 text-[#3b82f6]" />
-            <span className="font-bold text-white">New Purchase Entry</span>
+            <span className="font-bold text-white">{editingPurchase ? "Edit Purchase Entry" : "New Purchase Entry"}</span>
           </div>
           {formOpen ? <ChevronUp className="w-4 h-4 text-[#8faac3]" /> : <ChevronDown className="w-4 h-4 text-[#8faac3]" />}
         </button>
@@ -342,11 +431,19 @@ export default function PurchasesPage() {
                   <span className="ml-2 text-xs text-[#3b82f6]">→ Balance will be updated automatically</span>
                 </div>
               )}
-              <Button type="submit" disabled={isLoading}
-                className="ml-auto bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] text-white font-bold h-11 px-8 shadow-lg">
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <ShoppingCart className="w-4 h-4 mr-2" />}
-                Save Purchase Record
-              </Button>
+              <div className="ml-auto flex gap-2">
+                {editingPurchase && (
+                  <Button type="button" variant="outline" onClick={cancelEdit}
+                    className="border-[#1e3464] text-[#8faac3] bg-transparent hover:bg-[#1e3464] font-bold h-11 px-4">
+                    <X className="w-4 h-4 mr-2" /> Cancel
+                  </Button>
+                )}
+                <Button type="submit" disabled={isLoading}
+                  className="bg-gradient-to-r from-[#3b82f6] to-[#2563eb] hover:from-[#2563eb] hover:to-[#1d4ed8] text-white font-bold h-11 px-8 shadow-lg">
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : editingPurchase ? <Edit2 className="w-4 h-4 mr-2" /> : <ShoppingCart className="w-4 h-4 mr-2" />}
+                  {editingPurchase ? "Update Purchase" : "Save Purchase Record"}
+                </Button>
+              </div>
             </div>
           </form>
         )}
@@ -380,6 +477,7 @@ export default function PurchasesPage() {
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Amount</th>
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Paid</th>
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Balance</th>
+                  <th className="text-center px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -416,6 +514,15 @@ export default function PurchasesPage() {
                         <span className={balance > 0 ? "text-red-400" : "text-emerald-400"}>
                           {formatSAR(balance)}
                         </span>
+                      </td>
+                      <td className="px-4 py-3.5 text-center">
+                        <button
+                          onClick={() => startEditPurchase(pur)}
+                          className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-[#2563eb] text-[#8faac3] hover:text-white transition-all inline-flex items-center justify-center"
+                          title="Edit purchase"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );

@@ -57,9 +57,31 @@ export default function SupplierDetailPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
-  // Date filters
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
+  // Period filters (year / month / custom / all)
+  const currentYear = new Date().getFullYear();
+  const years = useMemo(() => Array.from({ length: 8 }, (_, i) => String(currentYear - i)), [currentYear]);
+  const months = useMemo(
+    () => [
+      { value: "01", label: "January" },
+      { value: "02", label: "February" },
+    { value: "03", label: "March" },
+    { value: "04", label: "April" },
+    { value: "05", label: "May" },
+    { value: "06", label: "June" },
+    { value: "07", label: "July" },
+    { value: "08", label: "August" },
+    { value: "09", label: "September" },
+    { value: "10", label: "October" },
+      { value: "11", label: "November" },
+      { value: "12", label: "December" },
+    ],
+    []
+  );
+  const [periodType, setPeriodType] = useState<"all" | "year" | "month" | "custom">("year");
+  const [selectedYear, setSelectedYear] = useState(String(currentYear));
+  const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [editForm, setEditForm] = useState<Partial<Supplier>>({});
   const [editErrors, setEditErrors] = useState<Record<string, boolean>>({});
 
@@ -123,35 +145,48 @@ export default function SupplierDetailPage() {
     fetchData();
   }, [fetchData]);
 
-  // Filter deliveries and payments by date
+  // Compute period range
+  const period = useMemo(() => {
+    if (periodType === "all") return { from: "", to: "", label: "All Time" };
+    if (periodType === "year") return { from: `${selectedYear}-01-01`, to: `${selectedYear}-12-31`, label: selectedYear };
+    if (periodType === "month") {
+      const lastDay = new Date(Number(selectedYear), Number(selectedMonth), 0).getDate();
+      const label = `${months.find((m) => m.value === selectedMonth)?.label} ${selectedYear}`;
+      return { from: `${selectedYear}-${selectedMonth}-01`, to: `${selectedYear}-${selectedMonth}-${String(lastDay).padStart(2, "0")}`, label };
+    }
+    return { from: customFrom, to: customTo, label: customFrom || customTo ? `${customFrom || "Start"} to ${customTo || "Today"}` : "Custom" };
+  }, [periodType, selectedYear, selectedMonth, customFrom, customTo, months]);
+
+  // Filter deliveries and payments by computed period
   const filteredDeliveries = useMemo(() => {
     return deliveries.filter((d) => {
       const date = new Date(d.delivery_date);
-      if (fromDate && date < new Date(fromDate)) return false;
-      if (toDate && date > new Date(toDate)) return false;
+      if (period.from && date < new Date(period.from)) return false;
+      if (period.to && date > new Date(period.to)) return false;
       return true;
     });
-  }, [deliveries, fromDate, toDate]);
+  }, [deliveries, period]);
 
   const filteredPayments = useMemo(() => {
     return payments.filter((p) => {
       const date = new Date(p.payment_date);
-      if (fromDate && date < new Date(fromDate)) return false;
-      if (toDate && date > new Date(toDate)) return false;
+      if (period.from && date < new Date(period.from)) return false;
+      if (period.to && date > new Date(period.to)) return false;
       return true;
     });
-  }, [payments, fromDate, toDate]);
+  }, [payments, period]);
 
   const filteredPurchases = useMemo(() => {
     return purchases.filter((p) => {
       const date = new Date(p.purchase_date);
-      if (fromDate && date < new Date(fromDate)) return false;
-      if (toDate && date > new Date(toDate)) return false;
+      if (period.from && date < new Date(period.from)) return false;
+      if (period.to && date > new Date(period.to)) return false;
       return true;
     });
-  }, [purchases, fromDate, toDate]);
+  }, [purchases, period]);
 
-  const totalDelivered = filteredDeliveries.reduce(
+  const openingBalance = Number(supplier?.opening_balance) || 0;
+  const totalDelivered = openingBalance + filteredDeliveries.reduce(
     (acc: number, curr: Delivery) => acc + (Number(curr.total_value) || 0),
     0
   ) + filteredPurchases.reduce(
@@ -170,7 +205,18 @@ export default function SupplierDetailPage() {
   
   const isFullyPaid = balanceDue <= 0 && totalDelivered > 0;
 
-  const combinedStock = useMemo(() => {
+  type CombinedStockItem = {
+    id: string;
+    date: string;
+    material_name: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    total_value: number;
+    type: "Delivery" | "Purchase";
+  };
+
+  const combinedStock = useMemo<CombinedStockItem[]>(() => {
     const list = [
       ...filteredDeliveries.map(d => ({
         id: d.id,
@@ -180,7 +226,7 @@ export default function SupplierDetailPage() {
         unit: d.unit,
         unit_price: d.unit_price,
         total_value: d.total_value,
-        type: "Delivery"
+        type: "Delivery" as const
       })),
       ...filteredPurchases.flatMap(p => 
         purchaseItems.filter(pi => pi.purchase_id === p.id).map(pi => ({
@@ -191,12 +237,68 @@ export default function SupplierDetailPage() {
           unit: "pcs",
           unit_price: pi.unit_price,
           total_value: pi.total_price,
-          type: "Purchase"
+          type: "Purchase" as const
         }))
       )
     ];
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [filteredDeliveries, filteredPurchases, purchaseItems]);
+
+  // Delivery edit state
+  type DeliveryEditForm = {
+    material_name: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    delivery_date: string;
+    notes: string;
+  };
+  const [editDelivery, setEditDelivery] = useState<Delivery | null>(null);
+  const [editDeliveryForm, setEditDeliveryForm] = useState<DeliveryEditForm>({
+    material_name: "",
+    quantity: 0,
+    unit: "units",
+    unit_price: 0,
+    delivery_date: "",
+    notes: "",
+  });
+
+  const startEditDelivery = (d: CombinedStockItem) => {
+    if (d.type !== "Delivery") return;
+    const originalDelivery = deliveries.find((item) => item.id === d.id);
+    if (!originalDelivery) return;
+
+    setEditDelivery(originalDelivery);
+    setEditDeliveryForm({
+      material_name: originalDelivery.material_name,
+      quantity: Number(originalDelivery.quantity) || 0,
+      unit: originalDelivery.unit || "units",
+      unit_price: Number(originalDelivery.unit_price) || 0,
+      delivery_date: originalDelivery.delivery_date,
+      notes: originalDelivery.notes || "",
+    });
+  };
+
+  const handleSaveDelivery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDelivery) return;
+    try {
+      const { error } = await supabase.from("deliveries").update({
+        material_name: editDeliveryForm.material_name,
+        quantity: Number(editDeliveryForm.quantity) || 0,
+        unit: editDeliveryForm.unit,
+        unit_price: Number(editDeliveryForm.unit_price) || 0,
+        delivery_date: editDeliveryForm.delivery_date,
+        notes: editDeliveryForm.notes || null,
+      }).eq("id", editDelivery.id);
+      if (error) throw error;
+      toast({ title: "Updated", description: "Delivery entry updated." });
+      setEditDelivery(null);
+      fetchData();
+    } catch (err: unknown) {
+      toast({ title: "Error", description: (err as Error)?.message || "Failed to update delivery", variant: "destructive" });
+    }
+  };
 
   const combinedPayments = useMemo(() => {
     const list = [
@@ -236,6 +338,23 @@ export default function SupplierDetailPage() {
     return Array.from(itemsMap.entries()).map(([name, qty]) => `${qty} ${name}`).join(", ");
   }, [filteredDeliveries, filteredPurchases, purchaseItems]);
 
+  const isMissingOpeningBalanceColumnError = (message: string) =>
+    /opening_balance|column.*does not exist|does not exist in the schema/i.test(message);
+
+  const buildSupplierEditPayload = (includeOpeningBalance = true) => {
+    const basePayload = {
+      name: editForm.name?.trim() || supplier?.name || "",
+      contact_person: editForm.contact_person?.trim() || null,
+      phone: editForm.phone?.trim() || null,
+      material_type: editForm.material_type?.trim() || null,
+      notes: editForm.notes?.trim() || null,
+    };
+
+    return includeOpeningBalance
+      ? { ...basePayload, opening_balance: Number(editForm.opening_balance) || 0 }
+      : basePayload;
+  };
+
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editForm.name?.trim()) {
@@ -243,11 +362,21 @@ export default function SupplierDetailPage() {
       return;
     }
     try {
-      const { error } = await supabase
+      let result = await supabase
         .from("suppliers")
-        .update(editForm)
-        .eq("id", id);
-      if (error) throw error;
+        .update(buildSupplierEditPayload())
+        .eq("id", id)
+        .select();
+
+      if (result.error && isMissingOpeningBalanceColumnError(result.error.message)) {
+        result = await supabase
+          .from("suppliers")
+          .update(buildSupplierEditPayload(false))
+          .eq("id", id)
+          .select();
+      }
+
+      if (result.error) throw new Error(result.error.message);
       toast({ title: "Updated", description: "Supplier info saved." });
       setIsEditModalOpen(false);
       fetchData();
@@ -362,7 +491,7 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Items Brought Summary */}
-      {(itemsBroughtSummary || fromDate || toDate) && (
+      {itemsBroughtSummary && (
         <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm p-4 mt-4">
           <div className="flex items-center gap-2 mb-2">
             <Package className="w-5 h-5 text-[#f59e0b]" />
@@ -376,18 +505,16 @@ export default function SupplierDetailPage() {
         </div>
       )}
 
-      {/* Date Filters & Download */}
+      {/* Period Filters & Download */}
       <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm p-4 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-[#1a1a2e] font-bold">
-            <Calendar className="w-4 h-4 text-[#f59e0b]" />
-            Filter by Date Range
+            <Calendar className="w-4 h-4 text-[#f59e0b]" /> Filter by Period
           </div>
           <div className="flex gap-2">
             <Button
               variant="outline"
               onClick={() => {
-                // Download Excel
                 const stockData = filteredDeliveries.map((d) => ({
                   Date: format(new Date(d.delivery_date), "dd MMM yyyy"),
                   Material: d.material_name,
@@ -414,7 +541,7 @@ export default function SupplierDetailPage() {
                     { Type: "Payment Paid", Value: formatSAR(totalPaid) },
                     { Type: "Payment Remaining", Value: formatSAR(balanceDue) },
                   ],
-                  `${supplier.name}-Report`
+                  `${supplier.name}-${period.label}-Report`
                 );
                 toast({ title: "Excel Downloaded", description: "Report saved to your device." });
               }}
@@ -425,7 +552,6 @@ export default function SupplierDetailPage() {
             <Button
               variant="outline"
               onClick={() => {
-                // Download PDF - Combine stock and payment data
                 const allHeaders = ["Date", "Type", "Description", "Amount"];
                 const allData = [
                   ...filteredDeliveries.map((d) => [
@@ -441,12 +567,12 @@ export default function SupplierDetailPage() {
                     formatSAR(Number(p.amount) || 0),
                   ]),
                 ].sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime());
-                
+
                 downloadPDF(
                   `${supplier.name} - Report`,
                   allHeaders,
                   allData,
-                  `${supplier.name}-Report`,
+                  `${supplier.name}-${period.label}-Report`,
                   [
                     { label: "Total Delivered", value: formatSAR(totalDelivered) },
                     { label: "Payment Paid", value: formatSAR(totalPaid) },
@@ -461,36 +587,47 @@ export default function SupplierDetailPage() {
             </Button>
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex items-center gap-2 flex-1">
-            <Label className="text-sm text-[#64748b] whitespace-nowrap">From:</Label>
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="border-[#e2e8f0] h-10"
-            />
+
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Duration</label>
+            <select
+              value={periodType}
+              onChange={(e) => setPeriodType(e.target.value as "year" | "month" | "custom" | "all")}
+              className="w-full h-10 bg-white border border-[#e2e8f0] rounded-lg px-3 text-sm outline-none">
+              <option value="year">Yearly</option>
+              <option value="month">Monthly</option>
+              <option value="custom">Custom Duration</option>
+              <option value="all">All Time</option>
+            </select>
           </div>
-          <div className="flex items-center gap-2 flex-1">
-            <Label className="text-sm text-[#64748b] whitespace-nowrap">To:</Label>
-            <Input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="border-[#e2e8f0] h-10"
-            />
-          </div>
-          {(fromDate || toDate) && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setFromDate("");
-                setToDate("");
-              }}
-              className="text-[#64748b] hover:text-[#1a1a2e] h-10"
-            >
-              Clear
-            </Button>
+          {(periodType === "year" || periodType === "month") && (
+            <div>
+              <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Year</label>
+              <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-full h-10 bg-white border border-[#e2e8f0] rounded-lg px-3 text-sm outline-none">
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          )}
+          {periodType === "month" && (
+            <div>
+              <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Month</label>
+              <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full h-10 bg-white border border-[#e2e8f0] rounded-lg px-3 text-sm outline-none">
+                {months.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+          )}
+          {periodType === "custom" && (
+            <>
+              <div>
+                <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Start Date</label>
+                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-10" />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">End Date</label>
+                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-10" />
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -559,6 +696,13 @@ export default function SupplierDetailPage() {
                       </td>
                       <td className="px-5 py-3 text-right font-bold text-[#1a1a2e]">
                         {formatSAR(Number(d.total_value) || 0)}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        {d.type === "Delivery" && (
+                          <button onClick={() => startEditDelivery(d)} className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-[#2563eb] text-[#8faac3] hover:text-white transition-all inline-flex items-center justify-center">
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -690,6 +834,49 @@ export default function SupplierDetailPage() {
         onSuccess={fetchData}
       />
 
+      {/* Edit Delivery Modal */}
+      <Dialog open={!!editDelivery} onOpenChange={(open) => { if (!open) setEditDelivery(null); }}>
+        <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-none shadow-2xl">
+          <div className="bg-[#1a1a2e] p-5 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">Edit Delivery</DialogTitle>
+            </DialogHeader>
+          </div>
+          <form onSubmit={handleSaveDelivery} className="p-5 bg-white space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-[#1a1a2e] text-sm font-medium">Material Name</Label>
+              <Input value={editDeliveryForm.material_name || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, material_name: e.target.value }))} className="border h-11" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[#1a1a2e] text-sm font-medium">Quantity</Label>
+                <Input type="number" value={String(editDeliveryForm.quantity ?? "")} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, quantity: Number(e.target.value) }))} className="border h-11" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-[#1a1a2e] text-sm font-medium">Unit</Label>
+                <Input value={editDeliveryForm.unit || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, unit: e.target.value }))} className="border h-11" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[#1a1a2e] text-sm font-medium">Unit Price (SAR)</Label>
+              <Input type="number" value={String(editDeliveryForm.unit_price ?? "")} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, unit_price: Number(e.target.value) }))} className="border h-11" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[#1a1a2e] text-sm font-medium">Delivery Date</Label>
+              <Input type="date" value={editDeliveryForm.delivery_date || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, delivery_date: e.target.value }))} className="border h-11" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[#1a1a2e] text-sm font-medium">Notes</Label>
+              <Textarea value={editDeliveryForm.notes || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, notes: e.target.value }))} className="border min-h-[80px]" />
+            </div>
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" onClick={() => setEditDelivery(null)} className="flex-1 font-bold h-11">Cancel</Button>
+              <Button type="submit" className="flex-1 bg-[#f59e0b] hover:bg-amber-600 text-white font-bold h-11">Save Delivery</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Supplier Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-[480px] p-0 overflow-hidden border-none shadow-2xl">
@@ -751,6 +938,18 @@ export default function SupplierDetailPage() {
                   <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[#1a1a2e] text-sm font-medium">Opening Balance (SAR)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={String(Number(editForm.opening_balance) || "")}
+                onChange={(e) => setEditForm({ ...editForm, opening_balance: Number(e.target.value) || 0 })}
+                className="border-[#e2e8f0] h-11"
+                placeholder="0.00"
+              />
             </div>
             <div className="space-y-1.5">
               <Label className="text-[#1a1a2e] text-sm font-medium">Notes</Label>

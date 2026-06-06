@@ -1,280 +1,441 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppData } from "@/hooks/use-data";
 import { formatSAR, downloadExcel, downloadPDF } from "@/lib/format-utils";
 import {
-  Loader2,
+  BarChart3,
+  Calendar,
   Download,
   FileText,
-  BarChart3,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Users,
-  Calendar,
+  Loader2,
+  Package,
+  UserRound,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+
+type StatementRow = {
+  id: string;
+  date: string;
+  supplier_id: string;
+  supplier_name: string;
+  item: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_amount: number;
+  payment_method: string;
+  payment_amount: number;
+  running_balance: number;
+};
+
+const currentYear = new Date().getFullYear();
+const years = Array.from({ length: 8 }, (_, index) => String(currentYear - index));
+const months = [
+  { value: "01", label: "January" },
+  { value: "02", label: "February" },
+  { value: "03", label: "March" },
+  { value: "04", label: "April" },
+  { value: "05", label: "May" },
+  { value: "06", label: "June" },
+  { value: "07", label: "July" },
+  { value: "08", label: "August" },
+  { value: "09", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
+const formatDate = (date: string) => format(new Date(date), "dd/MM/yyyy");
+const dateStamp = (label: string) => label.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
 
 export default function ReportsPage() {
   const { data, isLoading } = useAppData();
-  const { summaries, deliveries, purchases, purchaseItems } = data;
+  const { suppliers, deliveries, payments, purchases, purchaseItems } = data;
   const { toast } = useToast();
-  
+
+  const [supplierFilter, setSupplierFilter] = useState("all");
+  const [periodType, setPeriodType] = useState<"all" | "year" | "month" | "custom">("year");
+  const [selectedYear, setSelectedYear] = useState(String(currentYear));
+  const [selectedMonth, setSelectedMonth] = useState(String(new Date().getMonth() + 1).padStart(2, "0"));
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [search, setSearch] = useState("");
-  const [reportMonth] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
 
-  // Flat list of all entries (Deliveries and Purchases)
-  const allEntries = useMemo(() => {
-    const supplierMap = new Map(summaries.map(s => [s.id, s.name]));
-    const typeMap = new Map(summaries.map(s => [s.id, s.material_type]));
+  const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
 
-    const dRows = deliveries.map(d => ({
-      id: `del-${d.id}`,
-      date: d.delivery_date,
-      type: "Delivery",
-      supplier_name: supplierMap.get(d.supplier_id) || "Unknown",
-      material: d.material_name || typeMap.get(d.supplier_id) || "N/A",
-      quantity: `${d.quantity} ${d.unit}`,
-      amount: Number(d.total_value)
-    }));
+  const period = useMemo(() => {
+    if (periodType === "all") return { from: "", to: "", label: "All Time" };
+    if (periodType === "year") {
+      return { from: `${selectedYear}-01-01`, to: `${selectedYear}-12-31`, label: selectedYear };
+    }
+    if (periodType === "month") {
+      const lastDay = new Date(Number(selectedYear), Number(selectedMonth), 0).getDate();
+      const label = `${months.find((m) => m.value === selectedMonth)?.label} ${selectedYear}`;
+      return {
+        from: `${selectedYear}-${selectedMonth}-01`,
+        to: `${selectedYear}-${selectedMonth}-${String(lastDay).padStart(2, "0")}`,
+        label,
+      };
+    }
+    return { from: customFrom, to: customTo, label: customFrom || customTo ? `${customFrom || "Start"} to ${customTo || "Today"}` : "Custom" };
+  }, [periodType, selectedYear, selectedMonth, customFrom, customTo]);
 
-    const pRows = (purchases || []).flatMap(p => {
-      const pItems = (purchaseItems || []).filter(pi => pi.purchase_id === p.id);
-      return pItems.map(pi => ({
-        id: `pur-${pi.id}`,
-        date: p.purchase_date,
-        type: "Purchase",
-        supplier_name: supplierMap.get(p.supplier_id) || "Unknown",
-        material: pi.item_name,
-        quantity: `${pi.quantity} pcs`,
-        amount: Number(pi.total_price)
-      }));
+  const statementRows = useMemo(() => {
+    const rawRows: Omit<StatementRow, "running_balance">[] = [];
+
+    deliveries.forEach((d) => {
+      const supplier = supplierMap.get(d.supplier_id);
+      rawRows.push({
+        id: `delivery-${d.id}`,
+        date: d.delivery_date,
+        supplier_id: d.supplier_id,
+        supplier_name: supplier?.name || "Unknown",
+        item: d.material_name || supplier?.material_type || "Stock",
+        quantity: Number(d.quantity) || 0,
+        unit: d.unit || "units",
+        unit_price: Number(d.unit_price) || 0,
+        total_amount: Number(d.total_value) || 0,
+        payment_method: "",
+        payment_amount: 0,
+      });
     });
 
-    let combined = [...dRows, ...pRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    // Apply date range filter if set
-    if (dateFrom && dateTo) {
-      combined = combined.filter(row => {
-        const rowDate = new Date(row.date);
-        const fromDate = new Date(dateFrom);
-        const toDate = new Date(dateTo);
-        return rowDate >= fromDate && rowDate <= toDate;
+    purchases.forEach((purchase) => {
+      const supplier = supplierMap.get(purchase.supplier_id);
+      const items = purchaseItems.filter((item) => item.purchase_id === purchase.id);
+      items.forEach((item) => {
+        rawRows.push({
+          id: `purchase-item-${item.id}`,
+          date: purchase.purchase_date,
+          supplier_id: purchase.supplier_id,
+          supplier_name: supplier?.name || "Unknown",
+          item: item.item_name,
+          quantity: Number(item.quantity) || 0,
+          unit: "pcs",
+          unit_price: Number(item.unit_price) || 0,
+          total_amount: Number(item.total_price) || 0,
+          payment_method: "",
+          payment_amount: 0,
+        });
       });
-    } else if (reportMonth !== "all") {
-      combined = combined.filter(row => row.date.startsWith(reportMonth));
-    }
 
-    if (search) {
-      const sLower = search.toLowerCase();
-      combined = combined.filter(row => 
-        row.supplier_name.toLowerCase().includes(sLower) || 
-        row.material.toLowerCase().includes(sLower) ||
-        row.type.toLowerCase().includes(sLower)
-      );
-    }
+      if (Number(purchase.payment_amount) > 0) {
+        rawRows.push({
+          id: `purchase-payment-${purchase.id}`,
+          date: purchase.purchase_date,
+          supplier_id: purchase.supplier_id,
+          supplier_name: supplier?.name || "Unknown",
+          item: purchase.notes || `Purchase payment - ${purchase.branch}`,
+          quantity: 0,
+          unit: "",
+          unit_price: 0,
+          total_amount: 0,
+          payment_method: "Purchase Payment",
+          payment_amount: Number(purchase.payment_amount) || 0,
+        });
+      }
+    });
 
-    return combined;
-  }, [deliveries, purchases, purchaseItems, summaries, reportMonth, search, dateFrom, dateTo]);
+    payments.forEach((payment) => {
+      const supplier = supplierMap.get(payment.supplier_id);
+      rawRows.push({
+        id: `payment-${payment.id}`,
+        date: payment.payment_date,
+        supplier_id: payment.supplier_id,
+        supplier_name: supplier?.name || "Unknown",
+        item: payment.notes || payment.reference_number || "Supplier payment",
+        quantity: 0,
+        unit: "",
+        unit_price: 0,
+        total_amount: 0,
+        payment_method: payment.payment_method || "Payment",
+        payment_amount: Number(payment.amount) || 0,
+      });
+    });
 
-  const { stockReceived, paymentsMade, stillOwed } = useMemo(() => {
-    const stock = summaries.reduce((acc, s) => acc + s.total_delivered, 0);
-    const payments = summaries.reduce((acc, s) => acc + s.total_paid, 0);
-    const owed = summaries.reduce((acc, s) => acc + Math.max(s.balance_due, 0), 0);
-    return { stockReceived: stock, paymentsMade: payments, stillOwed: owed };
-  }, [summaries]);
+    const searchText = search.trim().toLowerCase();
+    const selectedSupplierIds = supplierFilter === "all" ? suppliers.map((s) => s.id) : [supplierFilter];
+    const rowsBySupplier = new Map<string, Omit<StatementRow, "running_balance">[]>();
 
-  const exportAllExcel = () => {
-    const rows = allEntries.map((e) => ({
-      "Date": e.date,
-      "Supplier Name": e.supplier_name,
-      "Type": e.type,
-      "Material": e.material,
-      "Quantity": e.quantity,
-      "Amount (SAR)": e.amount,
+    selectedSupplierIds.forEach((supplierId) => {
+      rowsBySupplier.set(supplierId, rawRows.filter((row) => row.supplier_id === supplierId));
+    });
+
+    const result: StatementRow[] = [];
+    rowsBySupplier.forEach((supplierRows, supplierId) => {
+      const supplier = supplierMap.get(supplierId);
+      let runningBalance = Number(supplier?.opening_balance) || 0;
+      const sortedRows = supplierRows.sort((a, b) => {
+        const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+        return dateDiff || a.id.localeCompare(b.id);
+      });
+
+      sortedRows.forEach((row) => {
+        const rowDate = new Date(row.date);
+        const beforeFrom = period.from && rowDate < new Date(period.from);
+        const afterTo = period.to && rowDate > new Date(period.to);
+        runningBalance += row.total_amount - row.payment_amount;
+
+        if (beforeFrom || afterTo) return;
+        if (searchText && !`${row.supplier_name} ${row.item} ${row.payment_method}`.toLowerCase().includes(searchText)) return;
+
+        result.push({ ...row, running_balance: runningBalance });
+      });
+    });
+
+    return result.sort((a, b) => {
+      const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+      return dateDiff || a.supplier_name.localeCompare(b.supplier_name);
+    });
+  }, [deliveries, payments, purchases, purchaseItems, search, supplierFilter, supplierMap, suppliers, period.from, period.to]);
+
+  const totals = useMemo(() => {
+    const totalItems = statementRows.reduce((acc, row) => acc + row.total_amount, 0);
+    const totalPaid = statementRows.reduce((acc, row) => acc + row.payment_amount, 0);
+    const totalQty = statementRows.reduce((acc, row) => acc + row.quantity, 0);
+    const endingBalance = supplierFilter === "all"
+      ? statementRows.reduce((acc, row) => acc + row.total_amount - row.payment_amount, 0)
+      : statementRows.at(-1)?.running_balance || Number(supplierMap.get(supplierFilter)?.opening_balance) || 0;
+    return { totalItems, totalPaid, totalQty, endingBalance };
+  }, [statementRows, supplierFilter, supplierMap]);
+
+  const selectedSupplierName = supplierFilter === "all" ? "All Suppliers" : supplierMap.get(supplierFilter)?.name || "Supplier";
+  const filename = `${dateStamp(selectedSupplierName)}-${dateStamp(period.label)}-Statement`;
+
+  const exportExcel = () => {
+    const rows: Record<string, string | number>[] = statementRows.map((row, index) => ({
+      "S.No.": index + 1,
+      Date: formatDate(row.date),
+      "Supplier Name": row.supplier_name,
+      "Item Description": row.item,
+      Qty: row.quantity || "",
+      Unit: row.unit,
+      "Unit Price": row.unit_price || "",
+      "Total Amount": row.total_amount,
+      "Payment Method": row.payment_method,
+      "Payment Amount": row.payment_amount || "",
+      "Running Balance": row.running_balance,
     }));
-    downloadExcel(rows, `Full-Entries-Report-${reportMonth === 'all' ? 'All' : reportMonth}`);
-    toast({ title: "Excel Downloaded", description: "Full entries report saved." });
+
+    rows.push({
+      "S.No.": "Total Summary",
+      Date: "",
+      "Supplier Name": selectedSupplierName,
+      "Item Description": period.label,
+      Qty: totals.totalQty,
+      Unit: "",
+      "Unit Price": "",
+      "Total Amount": totals.totalItems,
+      "Payment Method": "",
+      "Payment Amount": totals.totalPaid,
+      "Running Balance": totals.endingBalance,
+    });
+
+    downloadExcel(rows, filename);
+    toast({ title: "Excel Downloaded", description: `${selectedSupplierName} statement saved.` });
   };
 
-  const exportAllPDF = () => {
-    const headers = ["Date", "Supplier Name", "Type", "Material", "Quantity", "Amount (SAR)"];
-    const rows = allEntries.map((e) => [
-      e.date,
-      e.supplier_name,
-      e.type,
-      e.material,
-      e.quantity,
-      formatSAR(e.amount),
+  const exportPDF = () => {
+    const headers = ["S.No.", "Date", "Supplier", "Item Description", "Qty", "Unit Price", "Total", "Payment", "Pay Amt", "Balance"];
+    const rows = statementRows.map((row, index) => [
+      index + 1,
+      formatDate(row.date),
+      row.supplier_name,
+      row.item,
+      row.quantity ? `${row.quantity} ${row.unit}` : "",
+      row.unit_price ? row.unit_price.toFixed(2) : "",
+      row.total_amount ? row.total_amount.toFixed(2) : "",
+      row.payment_method,
+      row.payment_amount ? row.payment_amount.toFixed(2) : "",
+      row.running_balance.toFixed(2),
     ]);
-    downloadPDF(`SupplierTrack - Entries Report (${reportMonth === 'all' ? 'All Time' : reportMonth})`, headers, rows, `Entries-Report-${reportMonth === 'all' ? 'All' : reportMonth}`, [
-      { label: "Total Entries", value: allEntries.length.toString() },
-      { label: "Filtered Value", value: formatSAR(allEntries.reduce((a, b) => a + b.amount, 0)) },
+
+    downloadPDF(`${selectedSupplierName} Statement - ${period.label}`, headers, rows, filename, [
+      { label: "Supplier", value: selectedSupplierName },
+      { label: "Statement Period", value: period.label },
+      { label: "Total Quantity", value: totals.totalQty.toFixed(2) },
+      { label: "Total Amount", value: formatSAR(totals.totalItems) },
+      { label: "Payment Paid", value: formatSAR(totals.totalPaid) },
+      { label: "Current Balance", value: formatSAR(totals.endingBalance) },
     ]);
-    toast({ title: "PDF Downloaded", description: "Full entries report saved." });
+    toast({ title: "PDF Downloaded", description: `${selectedSupplierName} statement saved.` });
   };
 
   return (
     <div className="p-4 md:p-6 max-w-[1400px] mx-auto w-full space-y-5">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b82f6] to-[#1d4ed8] flex items-center justify-center">
             <BarChart3 className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Reports</h1>
-            <p className="text-sm text-[#8faac3]">Detailed log of all supplier entries</p>
+            <h1 className="text-2xl font-bold text-white">Supplier Statements</h1>
+            <p className="text-sm text-[#8faac3]">Filter one supplier by yearly, monthly, custom, or all-time duration</p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={exportAllExcel} variant="outline"
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={exportExcel} disabled={statementRows.length === 0} variant="outline"
             className="gap-2 border-emerald-700 text-emerald-400 hover:bg-emerald-900/30 bg-transparent font-bold">
             <Download className="w-4 h-4" /> Export Excel
           </Button>
-          <Button onClick={exportAllPDF} variant="outline"
+          <Button onClick={exportPDF} disabled={statementRows.length === 0} variant="outline"
             className="gap-2 border-red-700 text-red-400 hover:bg-red-900/30 bg-transparent font-bold">
             <FileText className="w-4 h-4" /> Export PDF
           </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-10 h-10 animate-spin text-[#3b82f6]" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Suppliers</span>
-              <Users className="w-4 h-4 text-[#3b82f6]" />
+        <>
+          <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-4 grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div className="md:col-span-2">
+              <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                <UserRound className="w-3.5 h-3.5" /> Supplier
+              </label>
+              <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}
+                className="w-full h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]">
+                <option value="all">All Suppliers</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                ))}
+              </select>
             </div>
-            <div className="text-2xl font-bold text-white">{summaries.length}</div>
-          </div>
-          <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Stock Received (All)</span>
-              <TrendingUp className="w-4 h-4 text-[#3b82f6]" />
+            <div>
+              <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
+                <Calendar className="w-3.5 h-3.5" /> Duration
+              </label>
+              <select value={periodType} onChange={(e) => setPeriodType(e.target.value as "all" | "year" | "month" | "custom")}
+                className="w-full h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]">
+                <option value="year">Yearly</option>
+                <option value="month">Monthly</option>
+                <option value="custom">Custom Duration</option>
+                <option value="all">All Time</option>
+              </select>
             </div>
-            <div className="text-2xl font-bold text-white">{formatSAR(stockReceived)}</div>
-          </div>
-          <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid (All)</span>
-              <DollarSign className="w-4 h-4 text-emerald-400" />
+            {(periodType === "year" || periodType === "month") && (
+              <div>
+                <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider mb-1.5 block">Year</label>
+                <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}
+                  className="w-full h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]">
+                  {years.map((year) => <option key={year} value={year}>{year}</option>)}
+                </select>
+              </div>
+            )}
+            {periodType === "month" && (
+              <div>
+                <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider mb-1.5 block">Month</label>
+                <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-full h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]">
+                  {months.map((month) => <option key={month.value} value={month.value}>{month.label}</option>)}
+                </select>
+              </div>
+            )}
+            {periodType === "custom" && (
+              <>
+                <div>
+                  <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider mb-1.5 block">Start Date</label>
+                  <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)}
+                    className="h-10 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider mb-1.5 block">End Date</label>
+                  <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)}
+                    className="h-10 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]" />
+                </div>
+              </>
+            )}
+            <div className="md:col-span-5">
+              <Input placeholder="Search item, supplier, payment method..." value={search} onChange={(e) => setSearch(e.target.value)}
+                className="h-10 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]" />
             </div>
-            <div className="text-2xl font-bold text-emerald-400">{formatSAR(paymentsMade)}</div>
           </div>
-          <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Payment Remaining</span>
-              <TrendingDown className="w-4 h-4 text-red-400" />
-            </div>
-            <div className="text-2xl font-bold text-red-400">{formatSAR(stillOwed)}</div>
-          </div>
-        </div>
-      )}
 
-      {/* Entries Table */}
-      {!isLoading && (
-        <div className="bg-[#121e36] border border-[#1e3464] rounded-xl overflow-hidden shadow-xl">
-          <div className="px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h2 className="font-bold text-white">Tabular Entries Log</h2>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-              {/* Date Range Filter - Premium Look */}
-              <div className="flex items-center gap-2 bg-gradient-to-r from-[#1e3464] to-[#162040] border border-[#3b82f6]/40 rounded-lg p-2">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-[#3b82f6]" />
-                  <span className="text-xs font-bold text-[#8faac3] uppercase">From:</span>
-                  <Input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-8 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] text-xs w-[130px]"
-                  />
-                </div>
-                <div className="w-px h-6 bg-[#3b82f6]/30"></div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#8faac3] uppercase">To:</span>
-                  <Input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="h-8 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] text-xs w-[130px]"
-                  />
-                </div>
-              </div>
-              {/* Search */}
-              <input
-                placeholder="Search supplier or material..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="px-3 py-1.5 bg-[#0d1526] border border-[#1e3464] rounded-lg text-sm text-[#e2e8f0] placeholder-[#8faac3] outline-none focus:border-[#3b82f6] w-[200px]"
-              />
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
+              <div className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Entries</div>
+              <div className="text-2xl font-bold text-white mt-2">{statementRows.length}</div>
+            </div>
+            <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
+              <div className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Quantity</div>
+              <div className="text-2xl font-bold text-white mt-2">{totals.totalQty.toFixed(2)}</div>
+            </div>
+            <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
+              <div className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Amount</div>
+              <div className="text-2xl font-bold text-[#3b82f6] mt-2">{formatSAR(totals.totalItems)}</div>
+            </div>
+            <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-5">
+              <div className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Payment Paid</div>
+              <div className="text-2xl font-bold text-emerald-400 mt-2">{formatSAR(totals.totalPaid)}</div>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            {allEntries.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <BarChart3 className="w-10 h-10 text-[#1e3464] mb-3" />
-                <p className="text-[#8faac3] text-sm">No entries found.</p>
+
+          <div className="bg-[#121e36] border border-[#1e3464] rounded-xl overflow-hidden shadow-xl">
+            <div className="px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h2 className="font-bold text-white flex items-center gap-2">
+                <Package className="w-4 h-4 text-[#3b82f6]" /> {selectedSupplierName} - {period.label}
+              </h2>
+              <div className="text-sm text-[#8faac3]">
+                Current Balance: <span className="font-bold text-white">{formatSAR(totals.endingBalance)}</span>
               </div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[#1e3464]">
-                    <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">#</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Date</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Supplier Name</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Type</th>
-                    <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Material</th>
-                    <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Quantity</th>
-                    <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allEntries.map((e, idx) => (
-                    <tr key={e.id} className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors">
-                      <td className="px-4 py-3 text-[#8faac3] text-xs">{idx + 1}</td>
-                      <td className="px-4 py-3 text-[#8faac3] whitespace-nowrap">{e.date}</td>
-                      <td className="px-4 py-3 font-semibold text-white">{e.supplier_name}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 bg-[#1e3464] text-[#8faac3] rounded text-xs">
-                          {e.type}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-white">{e.material}</td>
-                      <td className="px-4 py-3 text-right text-[#e2e8f0]">{e.quantity}</td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-[#3b82f6]">
-                        {formatSAR(e.amount)}
-                      </td>
+            </div>
+            <div className="overflow-x-auto">
+              {statementRows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <BarChart3 className="w-10 h-10 text-[#1e3464] mb-3" />
+                  <p className="text-[#8faac3] text-sm">No supplier statement entries found.</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#1e3464]">
+                      <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">S.No.</th>
+                      <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Date</th>
+                      <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Supplier</th>
+                      <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Item Description</th>
+                      <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Qty</th>
+                      <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Unit Price</th>
+                      <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Total Amount</th>
+                      <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Payment</th>
+                      <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Payment Amt</th>
+                      <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase">Running Balance</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {statementRows.map((row, index) => (
+                      <tr key={row.id} className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors">
+                        <td className="px-4 py-3 text-[#8faac3] text-xs">{index + 1}</td>
+                        <td className="px-4 py-3 text-[#8faac3] whitespace-nowrap">{formatDate(row.date)}</td>
+                        <td className="px-4 py-3 font-semibold text-white">{row.supplier_name}</td>
+                        <td className="px-4 py-3 text-[#e2e8f0]">{row.item}</td>
+                        <td className="px-4 py-3 text-right text-[#e2e8f0]">{row.quantity ? `${row.quantity} ${row.unit}` : ""}</td>
+                        <td className="px-4 py-3 text-right font-mono text-[#8faac3]">{row.unit_price ? row.unit_price.toFixed(2) : ""}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-[#3b82f6]">{row.total_amount ? formatSAR(row.total_amount) : ""}</td>
+                        <td className="px-4 py-3 text-[#8faac3]">{row.payment_method}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-emerald-400">{row.payment_amount ? formatSAR(row.payment_amount) : ""}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-white">{formatSAR(row.running_balance)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            {statementRows.length > 0 && (
+              <div className="px-5 py-3 bg-[#0a1422] border-t border-[#1e3464] flex flex-col sm:flex-row sm:items-center justify-end gap-5">
+                <span className="text-sm"><span className="text-[#8faac3]">Total Amount: </span><span className="font-bold text-[#3b82f6]">{formatSAR(totals.totalItems)}</span></span>
+                <span className="text-sm"><span className="text-[#8faac3]">Payment Paid: </span><span className="font-bold text-emerald-400">{formatSAR(totals.totalPaid)}</span></span>
+                <span className="text-sm"><span className="text-[#8faac3]">Current Balance: </span><span className="font-bold text-white">{formatSAR(totals.endingBalance)}</span></span>
+              </div>
             )}
           </div>
-          {allEntries.length > 0 && (
-            <div className="px-5 py-3 bg-[#0a1422] border-t border-[#1e3464] flex items-center justify-between">
-              <span className="text-xs text-[#8faac3]"><span className="text-white font-bold">{allEntries.length}</span> entries</span>
-              <div className="flex gap-6">
-                <div>
-                  <span className="text-xs text-[#8faac3]">Filtered Amount: </span>
-                  <span className="text-sm font-bold text-[#3b82f6]">
-                    {formatSAR(allEntries.reduce((a, e) => a + e.amount, 0))}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        </>
       )}
     </div>
   );

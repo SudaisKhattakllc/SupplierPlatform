@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import { useAppData } from "@/hooks/use-data";
-import { formatSAR, downloadExcel } from "@/lib/format-utils";
-import { Loader2, Download, Package, Search } from "lucide-react";
+import { formatSAR, downloadExcel, downloadPDF } from "@/lib/format-utils";
+import { Loader2, Download, FileText, Package, Search } from "lucide-react";
 import { format } from "date-fns";
 
 export default function StockPage() {
@@ -88,16 +88,37 @@ export default function StockPage() {
   }, [allStockRows, supplierFilter, dateFrom, dateTo, search]);
 
   const exportToExcel = () => {
-    const rows = filteredRows.map((r) => ({
+    const rows: Record<string, string | number>[] = filteredRows.map((r) => ({
       Date: format(new Date(r.date), "yyyy-MM-dd"),
       Supplier: r.supplier_name,
       Material: r.material,
       Quantity: r.quantity,
       Unit: r.unit.toUpperCase(),
+      Source: r.source,
       "Value (SAR)": r.value,
     }));
-    rows.push({ Date: "TOTAL", Supplier: "", Material: "", Quantity: totalQty, Unit: "", "Value (SAR)": totalValue });
+    rows.push({ Date: "TOTAL", Supplier: "", Material: "", Quantity: totalQty, Unit: "", Source: "", "Value (SAR)": totalValue });
     downloadExcel(rows as never, "Stock-Report");
+  };
+
+  const exportToPDF = () => {
+    const headers = ["#", "Date", "Supplier", "Material", "Qty", "Unit", "Source", "Value"];
+    const rows = filteredRows.map((r, idx) => [
+      idx + 1,
+      format(new Date(r.date), "yyyy-MM-dd"),
+      r.supplier_name,
+      r.material,
+      r.quantity.toFixed(2),
+      r.unit.toUpperCase(),
+      r.source,
+      formatSAR(r.value),
+    ]);
+
+    downloadPDF("Stock Inventory Report", headers, rows, "Stock-Report", [
+      { label: "Total Stock Entries", value: filteredRows.length.toString() },
+      { label: "Total Quantity In Stock", value: totalQty.toFixed(2) },
+      { label: "Total Stock Value", value: formatSAR(totalValue) },
+    ]);
   };
 
   return (
@@ -113,12 +134,20 @@ export default function StockPage() {
             <p className="text-sm text-[#8faac3]">Manage and track raw materials and finished goods</p>
           </div>
         </div>
-        <button
-          onClick={exportToExcel}
-          className="flex items-center gap-2 px-4 py-2.5 border border-[#f59e0b]/60 text-[#f59e0b] hover:bg-[#f59e0b]/10 rounded-lg text-sm font-bold transition-all"
-        >
-          <Download className="w-4 h-4" /> Export to Excel
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2.5 border border-[#f59e0b]/60 text-[#f59e0b] hover:bg-[#f59e0b]/10 rounded-lg text-sm font-bold transition-all"
+          >
+            <Download className="w-4 h-4" /> Excel
+          </button>
+          <button
+            onClick={exportToPDF}
+            className="flex items-center gap-2 px-4 py-2.5 border border-red-500/60 text-red-400 hover:bg-red-900/20 rounded-lg text-sm font-bold transition-all"
+          >
+            <FileText className="w-4 h-4" /> PDF
+          </button>
+        </div>
       </div>
 
       {/* Filters Row */}
