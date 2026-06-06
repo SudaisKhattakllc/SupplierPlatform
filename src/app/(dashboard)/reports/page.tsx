@@ -329,8 +329,19 @@ export default function ReportsPage() {
                 placeholder="Type supplier name..."
                 className="h-10 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]"
               />
-              {isSupplierMenuOpen && supplierSearch.trim().length > 0 && (
+              {isSupplierMenuOpen && (
                 <div className="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-auto rounded-lg border border-[#1e3464] bg-[#0d1526] shadow-2xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupplierFilter("all");
+                      setSupplierSearch("");
+                      setIsSupplierMenuOpen(false);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm font-semibold text-[#e2e8f0] hover:bg-[#162040] border-b border-[#1e3464]"
+                  >
+                    All Suppliers
+                  </button>
                   {filteredSuppliers.length > 0 ? (
                     filteredSuppliers.map((supplier) => (
                       <button

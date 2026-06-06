@@ -48,6 +48,7 @@ export default function PurchasesPage() {
     payment_amount: "",
     notes: "",
   });
+  const [branchFilter, setBranchFilter] = useState("all");
 
   const [items, setItems] = useState<PurchaseFormItem[]>([
     { id: 1, item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 },
@@ -151,8 +152,18 @@ export default function PurchasesPage() {
     });
   }, [appData.purchases, appData.purchaseItems, suppliers]);
 
+  const branchOptions = useMemo(
+    () => Array.from(new Set(enrichedPurchases.map((pur) => pur.branch))).sort(),
+    [enrichedPurchases]
+  );
+
+  const filteredPurchases = useMemo(
+    () => branchFilter === "all" ? enrichedPurchases : enrichedPurchases.filter((purchase) => purchase.branch === branchFilter),
+    [branchFilter, enrichedPurchases]
+  );
+
   const exportPurchasesExcel = () => {
-    const rows: Array<Record<string, string | number | undefined>> = enrichedPurchases.flatMap((pur, idx) => [
+    const rows: Array<Record<string, string | number | undefined>> = filteredPurchases.flatMap((pur, idx) => [
       { "#": idx + 1, Date: format(new Date(pur.purchase_date), "yyyy-MM-dd"), Supplier: pur.supplier_name, Branch: pur.branch, Item: "", Qty: "", "Unit Price": "", Total: pur.total_amount },
       ...(pur.items || []).map((it: PurchaseItem) => ({ "#": "", Date: "", Supplier: "", Branch: "", Item: it.item_name, Qty: it.quantity, "Unit Price": it.unit_price, Total: it.total_price })),
       { "#": "", Date: "", Supplier: "", Branch: "", Item: "Payment", Qty: "", "Unit Price": "", Total: pur.payment_amount },
@@ -164,17 +175,17 @@ export default function PurchasesPage() {
 
   const exportPurchasesPDF = () => {
     const headers = ["#", "Date", "Supplier", "Branch", "Item", "Qty", "Unit Price", "Total"];
-    const rows = enrichedPurchases.flatMap((pur, idx) => [
+    const rows = filteredPurchases.flatMap((pur, idx) => [
       [idx + 1, format(new Date(pur.purchase_date), "yyyy-MM-dd"), pur.supplier_name, pur.branch, "", "", "", pur.total_amount],
       ...((pur.items || []).map((it: PurchaseItem) => ["", "", "", "", it.item_name, it.quantity, it.unit_price.toFixed(2), it.total_price])),
       ["", "", "", "", "Payment", "", "", pur.payment_amount],
       ["", "", "", "", "", "", "", ""]
     ]);
-    const totalQuantity = enrichedPurchases.reduce((sum, purchase) =>
+    const totalQuantity = filteredPurchases.reduce((sum, purchase) =>
       sum + (purchase.items || []).reduce((itemSum, item) => itemSum + (Number(item.quantity) || 0), 0),
       0
     );
-    const totalAmount = enrichedPurchases.reduce((sum, purchase) => sum + (Number(purchase.total_amount) || 0), 0);
+    const totalAmount = filteredPurchases.reduce((sum, purchase) => sum + (Number(purchase.total_amount) || 0), 0);
 
     downloadPDF("Purchases Report", headers, rows, "Purchases-Report", [
       { label: "Total Quantity", value: totalQuantity.toFixed(2) },
@@ -457,16 +468,29 @@ export default function PurchasesPage() {
 
       {/* Purchases History Table */}
       <div className="bg-[#121e36] border border-[#1e3464] rounded-xl overflow-hidden shadow-xl">
-        <div className="px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] flex items-center justify-between">
+        <div className="px-5 py-4 bg-[#0a1422] border-b border-[#1e3464] flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 className="font-bold text-white flex items-center gap-2">
               <Package className="w-4 h-4 text-[#3b82f6]" /> Purchase History
             </h2>
-            <p className="text-xs text-[#8faac3] mt-0.5">{enrichedPurchases.length} total purchases</p>
+            <p className="text-xs text-[#8faac3] mt-0.5">{filteredPurchases.length} total purchases</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs uppercase tracking-wider text-[#8faac3]">Filter by branch</span>
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              className="h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]"
+            >
+              <option value="all">All Branches</option>
+              {branchOptions.map((branch) => (
+                <option key={branch} value={branch}>{branch}</option>
+              ))}
+            </select>
           </div>
         </div>
         <div className="overflow-x-auto">
-          {enrichedPurchases.length === 0 ? (
+          {filteredPurchases.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
               <ShoppingCart className="w-10 h-10 text-[#1e3464] mb-3" />
               <p className="text-[#8faac3] text-sm">No purchase records yet.</p>
@@ -487,7 +511,7 @@ export default function PurchasesPage() {
                 </tr>
               </thead>
               <tbody>
-                {enrichedPurchases.map((pur, idx) => {
+                {filteredPurchases.map((pur, idx) => {
                   const balance = pur.total_amount - pur.payment_amount;
                   return (
                     <tr key={pur.id} className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors">
@@ -537,19 +561,19 @@ export default function PurchasesPage() {
             </table>
           )}
         </div>
-        {enrichedPurchases.length > 0 && (
+        {filteredPurchases.length > 0 && (
           <div className="px-5 py-3 bg-[#0a1422] border-t border-[#1e3464] flex items-center justify-end gap-6">
             <div>
               <span className="text-xs text-[#8faac3]">Total Purchases: </span>
-              <span className="text-sm font-bold text-white">{formatSAR(enrichedPurchases.reduce((a, p) => a + p.total_amount, 0))}</span>
+              <span className="text-sm font-bold text-white">{formatSAR(filteredPurchases.reduce((a, p) => a + p.total_amount, 0))}</span>
             </div>
             <div>
               <span className="text-xs text-[#8faac3]">Total Paid: </span>
-              <span className="text-sm font-bold text-emerald-400">{formatSAR(enrichedPurchases.reduce((a, p) => a + p.payment_amount, 0))}</span>
+              <span className="text-sm font-bold text-emerald-400">{formatSAR(filteredPurchases.reduce((a, p) => a + p.payment_amount, 0))}</span>
             </div>
             <div>
               <span className="text-xs text-[#8faac3]">Total Remaining: </span>
-              <span className="text-sm font-bold text-red-400">{formatSAR(enrichedPurchases.reduce((a, p) => a + (p.total_amount - p.payment_amount), 0))}</span>
+              <span className="text-sm font-bold text-red-400">{formatSAR(filteredPurchases.reduce((a, p) => a + (p.total_amount - p.payment_amount), 0))}</span>
             </div>
           </div>
         )}

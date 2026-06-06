@@ -323,22 +323,39 @@ export default function SupplierDetailPage() {
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [filteredPayments, filteredPurchases]);
 
-  const itemsBroughtSummary = useMemo(() => {
-    const itemsMap = new Map<string, number>();
-    filteredDeliveries.forEach(d => {
-      if (d.material_name) {
-        itemsMap.set(d.material_name, (itemsMap.get(d.material_name) || 0) + Number(d.quantity || 0));
-      }
-    });
-    filteredPurchases.forEach(pur => {
-      const purItems = purchaseItems.filter(pi => pi.purchase_id === pur.id);
-      purItems.forEach(pi => {
-        if (pi.item_name) {
-          itemsMap.set(pi.item_name, (itemsMap.get(pi.item_name) || 0) + Number(pi.quantity || 0));
-        }
+  type ProductSummaryEntry = { name: string; quantity: number; unit: string };
+
+  const itemsBroughtSummary = useMemo<ProductSummaryEntry[]>(() => {
+    const itemsMap = new Map<string, { quantity: number; unit: string }>();
+
+    filteredDeliveries.forEach((d) => {
+      if (!d.material_name) return;
+      const key = d.material_name.trim();
+      const existing = itemsMap.get(key) || { quantity: 0, unit: d.unit || "units" };
+      itemsMap.set(key, {
+        quantity: existing.quantity + Number(d.quantity || 0),
+        unit: existing.unit || d.unit || "units",
       });
     });
-    return Array.from(itemsMap.entries()).map(([name, qty]) => `${qty} ${name}`).join(", ");
+
+    filteredPurchases.forEach((pur) => {
+      const purItems = purchaseItems.filter((pi) => pi.purchase_id === pur.id);
+      purItems.forEach((pi) => {
+        if (!pi.item_name) return;
+        const key = pi.item_name.trim();
+        const existing = itemsMap.get(key) || { quantity: 0, unit: "pcs" };
+        itemsMap.set(key, {
+          quantity: existing.quantity + Number(pi.quantity || 0),
+          unit: existing.unit || "pcs",
+        });
+      });
+    });
+
+    return Array.from(itemsMap.entries()).map(([name, value]) => ({
+      name,
+      quantity: value.quantity,
+      unit: value.unit,
+    }));
   }, [filteredDeliveries, filteredPurchases, purchaseItems]);
 
   const isMissingOpeningBalanceColumnError = (message: string) =>
@@ -440,18 +457,18 @@ export default function SupplierDetailPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 pb-28 max-w-[1400px] mx-auto w-full space-y-6">
+    <div className="p-4 md:p-6 pb-44 max-w-[1400px] mx-auto w-full space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <Link
             href="/suppliers"
-            className="text-sm text-[#64748b] hover:text-[#1a1a2e] flex items-center gap-1 mb-1"
+            className="text-sm text-[#8faac3] hover:text-white flex items-center gap-1 mb-1"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl md:text-3xl font-bold text-[#1a1a2e]">
+            <h1 className="text-2xl md:text-3xl font-bold text-white">
               {supplier.name}
             </h1>
             {isFullyPaid && (
@@ -460,7 +477,7 @@ export default function SupplierDetailPage() {
               </span>
             )}
           </div>
-          <p className="text-sm text-[#64748b] mt-0.5">
+          <p className="text-sm text-[#8faac3] mt-0.5">
             {supplier.material_type || "Supplier"} Provider
             {supplier.contact_person ? ` · ${supplier.contact_person}` : ""}
             {supplier.phone ? ` · ${supplier.phone}` : ""}
@@ -495,23 +512,26 @@ export default function SupplierDetailPage() {
 
       {/* Items Brought Summary */}
       {itemsBroughtSummary && (
-        <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm p-4 mt-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-4 mt-4">
+          <div className="flex items-center gap-2 mb-3">
             <Package className="w-5 h-5 text-[#f59e0b]" />
-            <h2 className="text-lg font-bold text-[#1a1a2e]">Items Brought Summary</h2>
+            <h2 className="text-lg font-bold text-white">Items Brought Summary</h2>
           </div>
-          {itemsBroughtSummary ? (
-            <p className="text-[#1a1a2e] text-sm font-medium">{itemsBroughtSummary}</p>
-          ) : (
-            <p className="text-[#64748b] text-sm">No items found for this period.</p>
-          )}
+          <div className="grid gap-2 sm:grid-cols-2">
+            {itemsBroughtSummary.map((entry) => (
+              <div key={entry.name} className="rounded-lg border border-[#1e3464] bg-[#0d1526] p-3">
+                <div className="text-xs uppercase tracking-wider text-[#8faac3]">{entry.name}</div>
+                <div className="mt-1 text-sm font-semibold text-white">{entry.quantity} {entry.unit}</div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Period Filters & Download */}
-      <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm p-4 space-y-4">
+      <div className="bg-[#121e36] border border-[#1e3464] rounded-xl p-4 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-[#1a1a2e] font-bold">
+          <div className="flex items-center gap-2 text-white font-bold">
             <Calendar className="w-4 h-4 text-[#f59e0b]" /> Filter by Period
           </div>
           <div className="flex gap-2">
@@ -556,6 +576,23 @@ export default function SupplierDetailPage() {
               variant="outline"
               onClick={() => {
                 const allHeaders = ["Date", "Type", "Description", "Amount"];
+                const purchaseRows = filteredPurchases.flatMap((pur) => {
+                  const purItems = purchaseItems.filter((pi) => pi.purchase_id === pur.id);
+                  return purItems.length > 0
+                    ? purItems.map((pi) => [
+                        format(new Date(pur.purchase_date), "dd MMM yyyy"),
+                        "PURCHASE",
+                        `${pi.item_name} (${pi.quantity} pcs)`,
+                        formatSAR(Number(pi.total_price) || 0),
+                      ])
+                    : [[
+                        format(new Date(pur.purchase_date), "dd MMM yyyy"),
+                        "PURCHASE",
+                        `Purchase (${pur.branch})`,
+                        formatSAR(Number(pur.total_amount) || 0),
+                      ]];
+                });
+
                 const allData = [
                   ...filteredDeliveries.map((d) => [
                     format(new Date(d.delivery_date), "dd MMM yyyy"),
@@ -563,6 +600,7 @@ export default function SupplierDetailPage() {
                     `${d.material_name} (${d.quantity} ${d.unit})`,
                     formatSAR(Number(d.total_value) || 0),
                   ]),
+                  ...purchaseRows,
                   ...filteredPayments.map((p) => [
                     format(new Date(p.payment_date), "dd MMM yyyy"),
                     "PAYMENT",
@@ -571,13 +609,21 @@ export default function SupplierDetailPage() {
                   ]),
                 ].sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime());
 
+                const totalProductQuantity = itemsBroughtSummary.reduce((sum, item) => sum + item.quantity, 0);
+                const productSummary = itemsBroughtSummary.map((item) => ({
+                  label: item.name,
+                  value: `${item.quantity} ${item.unit}`,
+                }));
+
                 downloadPDF(
                   `${supplier.name} - Report`,
                   allHeaders,
                   allData,
                   `${supplier.name}-${period.label}-Report`,
                   [
-                    { label: "Total Delivered", value: formatSAR(totalDelivered) },
+                    ...productSummary,
+                    { label: "Total Quantity", value: totalProductQuantity.toFixed(2) },
+                    { label: "Total Amount", value: formatSAR(totalDelivered) },
                     { label: "Payment Paid", value: formatSAR(totalPaid) },
                     { label: "Payment Remaining", value: formatSAR(balanceDue) },
                   ]
@@ -593,11 +639,11 @@ export default function SupplierDetailPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div>
-            <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Duration</label>
+            <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Duration</label>
             <select
               value={periodType}
               onChange={(e) => setPeriodType(e.target.value as "year" | "month" | "custom" | "all")}
-              className="w-full h-10 bg-white border border-[#e2e8f0] rounded-lg px-3 text-sm outline-none">
+              className="w-full h-9 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none">
               <option value="year">Yearly</option>
               <option value="month">Monthly</option>
               <option value="custom">Custom Duration</option>
@@ -606,29 +652,29 @@ export default function SupplierDetailPage() {
           </div>
           {(periodType === "year" || periodType === "month") && (
             <div>
-              <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Year</label>
-              <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-full h-10 bg-white border border-[#e2e8f0] rounded-lg px-3 text-sm outline-none">
-                {years.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
+                <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Year</label>
+                <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-full h-9 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none">
+                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
           )}
           {periodType === "month" && (
             <div>
-              <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Month</label>
-              <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full h-10 bg-white border border-[#e2e8f0] rounded-lg px-3 text-sm outline-none">
-                {months.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
+                <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Month</label>
+                <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full h-9 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none">
+                  {months.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
             </div>
           )}
           {periodType === "custom" && (
             <>
               <div>
-                <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">Start Date</label>
-                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-10" />
+                <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Start Date</label>
+                <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]" />
               </div>
               <div>
-                <label className="text-sm font-bold text-[#64748b] uppercase tracking-wider">End Date</label>
-                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-10" />
+                <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">End Date</label>
+                <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0]" />
               </div>
             </>
           )}
@@ -638,12 +684,12 @@ export default function SupplierDetailPage() {
       {/* Two side-by-side sections */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* LEFT — Stock History */}
-        <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#e2e8f0] bg-[#f8fafc] flex items-center justify-between">
-            <h2 className="text-sm font-bold text-[#1a1a2e] uppercase tracking-wider flex items-center gap-2">
+        <div className="bg-[#121e36] border border-[#1e3464] rounded-xl shadow-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-[#1e3464] bg-[#0a1422] flex items-center justify-between">
+            <h2 className="text-sm font-bold text-[#8faac3] uppercase tracking-wider flex items-center gap-2">
               <Package className="w-4 h-4 text-[#f59e0b]" /> Stock History
               {combinedStock.length > 0 && (
-                <span className="text-xs font-normal text-[#64748b] bg-white px-2 py-0.5 rounded-full border">
+                <span className="text-xs font-normal text-[#8faac3] bg-transparent px-2 py-0.5 rounded-full border border-[#1e3464]">
                   {combinedStock.length} items
                 </span>
               )}
@@ -656,22 +702,25 @@ export default function SupplierDetailPage() {
               </div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="bg-[#f8fafc]">
+                <thead className="bg-[#0a1422]">
                   <tr>
-                    <th className="text-left px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-left px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Date
                     </th>
-                    <th className="text-left px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-left px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Material
                     </th>
-                    <th className="text-right px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-right px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Quantity
                     </th>
-                    <th className="text-right px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-right px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Price/Unit
                     </th>
-                    <th className="text-right px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-right px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Total Value
+                    </th>
+                    <th className="text-right px-5 py-3 font-bold text-[#8faac3] text-xs">
+                      Action
                     </th>
                   </tr>
                 </thead>
@@ -679,25 +728,25 @@ export default function SupplierDetailPage() {
                   {combinedStock.map((d) => (
                     <tr
                       key={d.id}
-                      className="border-b border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
+                      className="border-b border-[#1e3464] hover:bg-[#162040] transition-colors"
                     >
-                      <td className="px-5 py-3 text-[#64748b] text-xs">
+                      <td className="px-5 py-3 text-[#8faac3] text-xs">
                         {format(new Date(d.date), "dd MMM yyyy")}
                         <div className="text-[9px] text-[#f59e0b] mt-0.5 uppercase tracking-wider">{d.type}</div>
                       </td>
-                      <td className="px-5 py-3 font-semibold text-[#1a1a2e]">
+                      <td className="px-5 py-3 font-semibold text-white">
                         {d.material_name}
                       </td>
                       <td className="px-5 py-3 text-right">
                         <span className="font-semibold">{d.quantity}</span>{" "}
-                        <span className="text-[#64748b] text-xs uppercase">
+                        <span className="text-[#8faac3] text-xs uppercase">
                           {d.unit}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right text-[#64748b] text-xs">
+                      <td className="px-5 py-3 text-right text-[#8faac3] text-xs">
                         {formatSAR(Number(d.unit_price) || 0)}
                       </td>
-                      <td className="px-5 py-3 text-right font-bold text-[#1a1a2e]">
+                      <td className="px-5 py-3 text-right font-bold text-[#3b82f6]">
                         {formatSAR(Number(d.total_value) || 0)}
                       </td>
                       <td className="px-5 py-3 text-right">
@@ -714,14 +763,13 @@ export default function SupplierDetailPage() {
             )}
           </div>
         </div>
-
         {/* RIGHT — Payment History */}
-        <div className="bg-white border border-[#e2e8f0] rounded-xl shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-[#e2e8f0] bg-[#f8fafc] flex items-center justify-between">
-            <h2 className="text-sm font-bold text-[#1a1a2e] uppercase tracking-wider flex items-center gap-2">
+        <div className="bg-[#0a1422] border border-[#1e3464] rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-[#1e3464] bg-[#0a1422] flex items-center justify-between">
+            <h2 className="text-sm font-bold text-[#8faac3] uppercase tracking-wider flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-[#10b981]" /> Payment History
               {combinedPayments.length > 0 && (
-                <span className="text-xs font-normal text-[#64748b] bg-white px-2 py-0.5 rounded-full border">
+                <span className="text-xs font-normal text-[#8faac3] bg-transparent px-2 py-0.5 rounded-full border border-[#1e3464]">
                   {combinedPayments.length} items
                 </span>
               )}
@@ -738,20 +786,20 @@ export default function SupplierDetailPage() {
           </div>
           <div className="overflow-x-auto">
             {combinedPayments.length === 0 ? (
-              <div className="py-12 text-center text-[#64748b] text-sm">
+              <div className="py-12 text-center text-[#8faac3] text-sm">
                 No payment records yet.
               </div>
             ) : (
               <table className="w-full text-sm">
-                <thead className="bg-[#f8fafc]">
+                <thead className="bg-[#0a1422]">
                   <tr>
-                    <th className="text-left px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-left px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Date
                     </th>
-                    <th className="text-right px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-right px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Amount
                     </th>
-                    <th className="text-left px-5 py-3 font-bold text-[#1a1a2e] text-xs">
+                    <th className="text-left px-5 py-3 font-bold text-[#8faac3] text-xs">
                       Method
                     </th>
                   </tr>
@@ -760,20 +808,20 @@ export default function SupplierDetailPage() {
                   {combinedPayments.map((p) => (
                     <tr
                       key={p.id}
-                      className="border-b border-[#e2e8f0] hover:bg-[#f8fafc] transition-colors"
+                      className="border-b border-[#1e3464] hover:bg-[#162040] transition-colors"
                     >
-                      <td className="px-5 py-3 text-[#64748b] text-xs">
+                      <td className="px-5 py-3 text-[#8faac3] text-xs">
                         {format(new Date(p.date), "dd MMM yyyy")}
                       </td>
-                      <td className="px-5 py-3 text-right font-bold text-[#1a1a2e]">
+                      <td className="px-5 py-3 text-right font-bold text-white">
                         {formatSAR(Number(p.amount) || 0)}
                       </td>
                       <td className="px-5 py-3">
-                        <span className="capitalize text-[#64748b] text-xs">
+                        <span className="capitalize text-[#8faac3] text-xs">
                           {p.method}
                         </span>
                         {p.reference && (
-                          <span className="text-[#64748b] text-xs ml-1">
+                          <span className="text-[#8faac3] text-xs ml-1">
                             ({p.reference})
                           </span>
                         )}
@@ -788,23 +836,23 @@ export default function SupplierDetailPage() {
       </div>
 
       {/* Sticky Bottom Balance Bar */}
-      <div className="fixed bottom-0 left-0 right-0 md:left-[220px] bg-white border-t border-[#e2e8f0] shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30">
+      <div className="fixed bottom-0 left-0 right-0 md:left-[220px] bg-[#0a1422] border-t border-[#1e3464] shadow-[0_-6px_30px_rgba(0,0,0,0.12)] z-30">
         <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-3 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-6 sm:gap-10 w-full sm:w-auto">
             <div className="text-center sm:text-left">
-              <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">
+              <div className="text-[10px] font-bold text-[#8faac3] uppercase tracking-wider">
                 Total Goods
               </div>
-              <div className="text-lg font-bold text-[#1a1a2e]">
+              <div className="text-lg font-bold text-white">
                 {formatSAR(totalDelivered)}
               </div>
             </div>
-            <div className="hidden sm:block w-px h-8 bg-[#e2e8f0]" />
+            <div className="hidden sm:block w-px h-8 bg-[#1e3464]" />
             <div className="text-center sm:text-left">
-              <div className="text-[10px] font-bold text-[#64748b] uppercase tracking-wider">
+              <div className="text-[10px] font-bold text-[#8faac3] uppercase tracking-wider">
                 Payment Paid
               </div>
-              <div className="text-lg font-bold text-[#1a1a2e]">
+              <div className="text-lg font-bold text-white">
                 {formatSAR(totalPaid)}
               </div>
             </div>
@@ -818,7 +866,7 @@ export default function SupplierDetailPage() {
               <div className="text-xl font-bold text-red-500">
                 {formatSAR(balanceDue)}
               </div>
-              <div className="text-xs text-[#64748b] mt-0.5">
+              <div className="text-xs text-[#8faac3] mt-0.5">
                 {balanceDue > 0 ? "Payment Required" : "All Paid"}
               </div>
             </div>
@@ -845,32 +893,32 @@ export default function SupplierDetailPage() {
               <DialogTitle className="text-lg font-bold">Edit Delivery</DialogTitle>
             </DialogHeader>
           </div>
-          <form onSubmit={handleSaveDelivery} className="p-5 bg-white space-y-4">
+          <form onSubmit={handleSaveDelivery} className="p-5 bg-[#0d1526] text-[#e2e8f0] space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-[#1a1a2e] text-sm font-medium">Material Name</Label>
-              <Input value={editDeliveryForm.material_name || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, material_name: e.target.value }))} className="border h-11" />
+              <Label className="text-[#e2e8f0] text-sm font-medium">Material Name</Label>
+              <Input value={editDeliveryForm.material_name || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, material_name: e.target.value }))} className="border border-[#1e3464] h-11 bg-[#071225] text-[#e2e8f0]" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-[#1a1a2e] text-sm font-medium">Quantity</Label>
-                <Input type="number" value={String(editDeliveryForm.quantity ?? "")} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, quantity: Number(e.target.value) }))} className="border h-11" />
+                <Label className="text-[#e2e8f0] text-sm font-medium">Quantity</Label>
+                <Input type="number" value={String(editDeliveryForm.quantity ?? "")} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, quantity: Number(e.target.value) }))} className="border border-[#1e3464] h-11 bg-[#071225] text-[#e2e8f0]" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-[#1a1a2e] text-sm font-medium">Unit</Label>
-                <Input value={editDeliveryForm.unit || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, unit: e.target.value }))} className="border h-11" />
+                <Label className="text-[#e2e8f0] text-sm font-medium">Unit</Label>
+                <Input value={editDeliveryForm.unit || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, unit: e.target.value }))} className="border border-[#1e3464] h-11 bg-[#071225] text-[#e2e8f0]" />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[#1a1a2e] text-sm font-medium">Unit Price (SAR)</Label>
-              <Input type="number" value={String(editDeliveryForm.unit_price ?? "")} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, unit_price: Number(e.target.value) }))} className="border h-11" />
+              <Label className="text-[#e2e8f0] text-sm font-medium">Unit Price (SAR)</Label>
+              <Input type="number" value={String(editDeliveryForm.unit_price ?? "")} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, unit_price: Number(e.target.value) }))} className="border border-[#1e3464] h-11 bg-[#071225] text-[#e2e8f0]" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[#1a1a2e] text-sm font-medium">Delivery Date</Label>
-              <Input type="date" value={editDeliveryForm.delivery_date || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, delivery_date: e.target.value }))} className="border h-11" />
+              <Label className="text-[#e2e8f0] text-sm font-medium">Delivery Date</Label>
+              <Input type="date" value={editDeliveryForm.delivery_date || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, delivery_date: e.target.value }))} className="border border-[#1e3464] h-11 bg-[#071225] text-[#e2e8f0]" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[#1a1a2e] text-sm font-medium">Notes</Label>
-              <Textarea value={editDeliveryForm.notes || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, notes: e.target.value }))} className="border min-h-[80px]" />
+              <Label className="text-[#e2e8f0] text-sm font-medium">Notes</Label>
+              <Textarea value={editDeliveryForm.notes || ""} onChange={(e) => setEditDeliveryForm((prev) => ({ ...prev, notes: e.target.value }))} className="border border-[#1e3464] min-h-[80px] bg-[#071225] text-[#e2e8f0]" />
             </div>
             <DialogFooter className="pt-2 gap-2">
               <Button type="button" variant="outline" onClick={() => setEditDelivery(null)} className="flex-1 font-bold h-11">Cancel</Button>
