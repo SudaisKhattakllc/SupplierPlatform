@@ -65,6 +65,7 @@ export default function ReportsPage() {
   const [customTo, setCustomTo] = useState("");
   const [search, setSearch] = useState("");
   const [supplierSearch, setSupplierSearch] = useState("");
+  const [isSupplierMenuOpen, setIsSupplierMenuOpen] = useState(false);
 
   const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
   const filteredSuppliers = useMemo(() => {
@@ -318,38 +319,39 @@ export default function ReportsPage() {
                 value={supplierSearch}
                 onChange={(e) => {
                   setSupplierSearch(e.target.value);
+                  setIsSupplierMenuOpen(true);
                   if (e.target.value.trim().length === 0) {
                     setSupplierFilter("all");
                   }
                 }}
-                placeholder="Search supplier name..."
+                onFocus={() => setIsSupplierMenuOpen(true)}
+                onBlur={() => window.setTimeout(() => setIsSupplierMenuOpen(false), 120)}
+                placeholder="Type supplier name..."
                 className="h-10 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]"
               />
-              <div className="absolute z-10 left-0 right-0 mt-1 rounded-lg border border-[#1e3464] bg-[#0d1526] shadow-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSupplierFilter("all");
-                    setSupplierSearch("");
-                  }}
-                  className="w-full px-3 py-2 text-left text-sm text-[#e2e8f0] hover:bg-[#162040] border-b border-[#1e3464]"
-                >
-                  All Suppliers
-                </button>
-                {filteredSuppliers.map((supplier) => (
-                  <button
-                    key={supplier.id}
-                    type="button"
-                    onClick={() => {
-                      setSupplierFilter(supplier.id);
-                      setSupplierSearch(supplier.name);
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm text-[#e2e8f0] hover:bg-[#162040]"
-                  >
-                    {supplier.name}
-                  </button>
-                ))}
-              </div>
+              {isSupplierMenuOpen && supplierSearch.trim().length > 0 && (
+                <div className="absolute z-10 left-0 right-0 mt-1 max-h-64 overflow-auto rounded-lg border border-[#1e3464] bg-[#0d1526] shadow-2xl">
+                  {filteredSuppliers.length > 0 ? (
+                    filteredSuppliers.map((supplier) => (
+                      <button
+                        key={supplier.id}
+                        type="button"
+                        onClick={() => {
+                          setSupplierFilter(supplier.id);
+                          setSupplierSearch(supplier.name);
+                          setIsSupplierMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm text-[#e2e8f0] hover:bg-[#162040] border-b border-[#1e3464] last:border-b-0"
+                      >
+                        <span className="block font-medium">{supplier.name}</span>
+                        {supplier.material_type ? <span className="text-xs text-[#8faac3]">{supplier.material_type}</span> : null}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-3 text-sm text-[#8faac3]">No suppliers match this search.</div>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className="text-xs font-bold text-[#8faac3] uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
