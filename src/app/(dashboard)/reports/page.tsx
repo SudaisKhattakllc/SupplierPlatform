@@ -218,6 +218,24 @@ export default function ReportsPage() {
     return { totalItems, totalPaid, totalQty, endingBalance };
   }, [statementRows, supplierFilter, supplierMap]);
 
+  const productSummary = useMemo(() => {
+    const productMap = new Map<string, { quantity: number; unit: string }>();
+    statementRows.forEach((row) => {
+      if (!row.item || !row.quantity || !row.unit || row.payment_method) return;
+      const key = `${row.item}|||${row.unit}`;
+      const existing = productMap.get(key) || { quantity: 0, unit: row.unit };
+      productMap.set(key, {
+        quantity: existing.quantity + row.quantity,
+        unit: existing.unit,
+      });
+    });
+    return Array.from(productMap.entries()).map(([key, value]) => ({
+      name: key.split("|||")[0],
+      quantity: value.quantity,
+      unit: value.unit,
+    }));
+  }, [statementRows]);
+
   const selectedSupplierName = supplierFilter === "all" ? "All Suppliers" : supplierMap.get(supplierFilter)?.name || "Supplier";
   const filename = `${dateStamp(selectedSupplierName)}-${dateStamp(period.label)}-Statement`;
 
@@ -272,6 +290,7 @@ export default function ReportsPage() {
     downloadPDF(`${selectedSupplierName} Statement - ${period.label}`, headers, rows, filename, [
       { label: "Supplier", value: selectedSupplierName },
       { label: "Statement Period", value: period.label },
+      ...productSummary.map((item) => ({ label: item.name, value: `${item.quantity} ${item.unit}` })),
       { label: "Total Quantity", value: totals.totalQty.toFixed(2) },
       { label: "Total Amount", value: formatSAR(totals.totalItems) },
       { label: "Payment Paid", value: formatSAR(totals.totalPaid) },
@@ -319,14 +338,12 @@ export default function ReportsPage() {
                 value={supplierSearch}
                 onChange={(e) => {
                   setSupplierSearch(e.target.value);
+                  setSupplierFilter("all");
                   setIsSupplierMenuOpen(true);
-                  if (e.target.value.trim().length === 0) {
-                    setSupplierFilter("all");
-                  }
                 }}
                 onFocus={() => setIsSupplierMenuOpen(true)}
                 onBlur={() => window.setTimeout(() => setIsSupplierMenuOpen(false), 120)}
-                placeholder="Type supplier name..."
+                placeholder="Search or select supplier..."
                 className="h-10 bg-[#0d1526] border-[#1e3464] text-[#e2e8f0] placeholder-[#8faac3]"
               />
               {isSupplierMenuOpen && (
