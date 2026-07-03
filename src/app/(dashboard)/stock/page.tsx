@@ -70,7 +70,7 @@ export default function StockPage() {
     );
   }, [deliveries, purchases, purchaseItems, supplierMap]);
 
-  const { filteredRows, totalValue, totalQty } = useMemo(() => {
+  const { filteredRows, totalValue, totalQty, materialBreakdown } = useMemo(() => {
     const filtered = allStockRows.filter((row) => {
       const matchSupplier = supplierFilter === "all" || row.supplier_id === supplierFilter;
       const matchFrom = !dateFrom || new Date(row.date) >= new Date(dateFrom);
