@@ -49,6 +49,8 @@ export default function PurchasesPage() {
     notes: "",
   });
   const [branchFilter, setBranchFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const [items, setItems] = useState<PurchaseFormItem[]>([
     { id: 1, item_name: "", custom_item_name: "", quantity: 1, unit: "pcs", unit_price: 0 },
@@ -139,6 +141,23 @@ export default function PurchasesPage() {
     }
   };
 
+  const handleDelete = async (id: string | number) => {
+    if (!window.confirm("Are you sure you want to delete this purchase entry? This action cannot be undone.")) return;
+    setIsLoading(true);
+    try {
+      const { error: itemsError } = await supabase.from("purchase_items").delete().eq("purchase_id", id);
+      if (itemsError) throw itemsError;
+      const { error: purError } = await supabase.from("purchases").delete().eq("id", id);
+      if (purError) throw purError;
+      toast({ title: "Success ✓", description: "Purchase entry deleted successfully." });
+      mutate();
+    } catch (error: unknown) {
+      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to delete purchase", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Build enriched purchases list
   const enrichedPurchases = useMemo(() => {
     const supplierMap = new Map(suppliers.map((s) => [s.id, s.name]));
@@ -158,8 +177,15 @@ export default function PurchasesPage() {
   );
 
   const filteredPurchases = useMemo(
-    () => branchFilter === "all" ? enrichedPurchases : enrichedPurchases.filter((purchase) => purchase.branch === branchFilter),
-    [branchFilter, enrichedPurchases]
+    () => {
+      return enrichedPurchases.filter((purchase) => {
+        const matchBranch = branchFilter === "all" || purchase.branch === branchFilter;
+        const matchFrom = !dateFrom || new Date(purchase.purchase_date) >= new Date(dateFrom);
+        const matchTo = !dateTo || new Date(purchase.purchase_date) <= new Date(dateTo);
+        return matchBranch && matchFrom && matchTo;
+      });
+    },
+    [branchFilter, dateFrom, dateTo, enrichedPurchases]
   );
 
   const purchaseProductSummary = useMemo(() => {
@@ -499,18 +525,33 @@ export default function PurchasesPage() {
             </h2>
             <p className="text-xs text-[#8faac3] mt-0.5">{filteredPurchases.length} total purchases</p>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs uppercase tracking-wider text-[#8faac3]">Filter by branch</span>
-            <select
-              value={branchFilter}
-              onChange={(e) => setBranchFilter(e.target.value)}
-              className="h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]"
-            >
-              <option value="all">All Branches</option>
-              {branchOptions.map((branch) => (
-                <option key={branch} value={branch}>{branch}</option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wider text-[#8faac3]">From</span>
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wider text-[#8faac3]">To</span>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wider text-[#8faac3]">Branch</span>
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="h-10 bg-[#0d1526] border border-[#1e3464] rounded-lg px-3 text-sm text-[#e2e8f0] outline-none focus:border-[#3b82f6]"
+              >
+                <option value="all">All Branches</option>
+                {branchOptions.map((branch) => (
+                  <option key={branch} value={branch}>{branch}</option>
+                ))}
+              </select>
+            </div>
+            {(dateFrom || dateTo || branchFilter !== "all") && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); setBranchFilter("all"); }} className="h-10 px-3 bg-[#1e3464] hover:bg-[#3b82f6] text-[#8faac3] hover:text-white rounded-lg text-sm font-bold transition-all">
+                Reset
+              </button>
+            )}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -570,13 +611,22 @@ export default function PurchasesPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-center">
-                        <button
-                          onClick={() => startEditPurchase(pur)}
-                          className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-[#2563eb] text-[#8faac3] hover:text-white transition-all inline-flex items-center justify-center"
-                          title="Edit purchase"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => startEditPurchase(pur)}
+                            className="w-8 h-8 rounded-lg bg-[#1e3464] hover:bg-[#2563eb] text-[#8faac3] hover:text-white transition-all inline-flex items-center justify-center"
+                            title="Edit purchase"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(pur.id)}
+                            className="w-8 h-8 rounded-lg bg-red-900/30 hover:bg-red-600 text-red-400 hover:text-white transition-all inline-flex items-center justify-center"
+                            title="Delete purchase"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

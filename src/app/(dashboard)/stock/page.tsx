@@ -84,7 +84,16 @@ export default function StockPage() {
 
     const total = filtered.reduce((acc, r) => acc + r.value, 0);
     const qty = filtered.reduce((acc, r) => acc + r.quantity, 0);
-    return { filteredRows: filtered, totalValue: total, totalQty: qty };
+    
+    const breakdown = new Map<string, { quantity: number; unit: string }>();
+    filtered.forEach(r => {
+      const mat = r.material.toLowerCase().trim() || "unknown";
+      const existing = breakdown.get(mat) || { quantity: 0, unit: r.unit };
+      breakdown.set(mat, { quantity: existing.quantity + r.quantity, unit: existing.unit });
+    });
+    const materialBreakdown = Array.from(breakdown.entries()).map(([name, data]) => ({ name, ...data }));
+
+    return { filteredRows: filtered, totalValue: total, totalQty: qty, materialBreakdown };
   }, [allStockRows, supplierFilter, dateFrom, dateTo, search]);
 
   const exportToExcel = () => {
@@ -94,15 +103,16 @@ export default function StockPage() {
       Material: r.material,
       Quantity: r.quantity,
       Unit: r.unit.toUpperCase(),
+      "Unit Price": (r.value / (r.quantity || 1)).toFixed(2),
       Source: r.source,
       "Value (SAR)": r.value,
     }));
-    rows.push({ Date: "TOTAL", Supplier: "", Material: "", Quantity: totalQty, Unit: "", Source: "", "Value (SAR)": totalValue });
+    rows.push({ Date: "TOTAL", Supplier: "", Material: "", Quantity: totalQty, Unit: "", "Unit Price": "", Source: "", "Value (SAR)": totalValue });
     downloadExcel(rows as never, "Stock-Report");
   };
 
   const exportToPDF = () => {
-    const headers = ["#", "Date", "Supplier", "Material", "Qty", "Unit", "Source", "Value"];
+    const headers = ["#", "Date", "Supplier", "Material", "Qty", "Unit", "Unit Price", "Source", "Value"];
     const rows = filteredRows.map((r, idx) => [
       idx + 1,
       format(new Date(r.date), "yyyy-MM-dd"),
@@ -110,6 +120,7 @@ export default function StockPage() {
       r.material,
       r.quantity.toFixed(2),
       r.unit.toUpperCase(),
+      (r.value / (r.quantity || 1)).toFixed(2),
       r.source,
       formatSAR(r.value),
     ]);
@@ -117,6 +128,7 @@ export default function StockPage() {
     downloadPDF("Stock Inventory Report", headers, rows, "Stock-Report", [
       { label: "Total Stock Entries", value: filteredRows.length.toString() },
       { label: "Total Quantity In Stock", value: totalQty.toFixed(2) },
+      ...materialBreakdown.map(mat => ({ label: `Total ${mat.name}`, value: `${mat.quantity.toFixed(2)} ${mat.unit}` })),
       { label: "Total Stock Value", value: formatSAR(totalValue) },
     ]);
   };
@@ -240,6 +252,7 @@ export default function StockPage() {
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Material</th>
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Qty</th>
                   <th className="text-left px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Unit</th>
+                  <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Unit Price</th>
                   <th className="text-right px-4 py-3 text-xs font-bold text-[#8faac3] uppercase tracking-wider">Value (SAR)</th>
                 </tr>
               </thead>
@@ -265,6 +278,9 @@ export default function StockPage() {
                         {row.unit}
                       </span>
                     </td>
+                    <td className="px-4 py-3.5 text-right font-mono font-bold text-white">
+                      {(row.value / (row.quantity || 1)).toFixed(2)}
+                    </td>
                     <td className="px-4 py-3.5 text-right font-mono font-bold text-[#3b82f6]">
                       {formatSAR(row.value)}
                     </td>
@@ -282,12 +298,16 @@ export default function StockPage() {
               Showing <span className="text-white font-bold">{filteredRows.length}</span> of{" "}
               <span className="text-white font-bold">{allStockRows.length}</span> entries
             </div>
-            <div className="flex items-center gap-6">
-              <div>
-                <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Volume: </span>
-                <span className="text-sm font-bold text-white">{totalQty.toFixed(2)} Mixed</span>
+            <div className="flex flex-col md:flex-row md:items-center gap-6">
+              <div className="flex flex-wrap items-center gap-4">
+                <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Stock Summary:</span>
+                {materialBreakdown.map(mat => (
+                  <span key={mat.name} className="text-sm font-bold text-white capitalize">
+                    {mat.name}: <span className="text-[#3b82f6]">{mat.quantity.toFixed(2)} {mat.unit}</span>
+                  </span>
+                ))}
               </div>
-              <div className="h-4 w-px bg-[#1e3464]" />
+              <div className="hidden md:block h-4 w-px bg-[#1e3464]" />
               <div>
                 <span className="text-xs font-bold text-[#8faac3] uppercase tracking-wider">Total Value: </span>
                 <span className="text-xl font-bold text-[#3b82f6]">{formatSAR(totalValue)}</span>
