@@ -68,3 +68,42 @@ export interface PurchaseItem {
   unit_price: number
   total_price: number
 }
+
+// ─── Employee Salary Module Types ────────────────────────────
+
+export interface Employee {
+  id: string
+  name: string
+  iqama_no?: string
+  job_title?: string
+  phone?: string
+  base_salary_sar: number
+  status: 'active' | 'inactive'
+  created_at: string
+}
+
+export interface SalaryMonth {
+  id: string
+  employee_id: string
+  month: number
+  year: number
+  base_salary: number
+  total_paid: number
+  balance: number          // generated: base_salary - total_paid
+  status: 'open' | 'closed'
+  created_at: string
+  employees?: { name: string }  // joined from employees table
+}
+
+export interface SalaryTransaction {
+  id: string
+  employee_id: string
+  salary_month_id: string
+  date: string
+  type: 'advance' | 'payment'
+  amount: number
+  note?: string
+  created_at: string
+  employees?: { name: string }       // joined from employees table
+  salary_months?: { month: number; year: number }  // joined from salary_months
+}

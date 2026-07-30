@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   ShoppingCart,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/stock", label: "Stock", icon: Package },
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/staff", label: "Staff", icon: UserCheck },
 ];
 
 export default function Sidebar() {
