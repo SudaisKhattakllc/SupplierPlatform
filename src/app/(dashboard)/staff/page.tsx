@@ -81,7 +81,7 @@ const [formData, setFormData] = useState({
 
   // ─── State for Transactions ────────────────────────────────
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
-  const [selectedTxEmployee, setSelectedTxEmployee] = useState<any>(null);
+  const [selectedTxEmployee, setSelectedTxEmployee] = useState<Record<string, unknown> | null>(null);
   const [txFormData, setTxFormData] = useState({ type: "advance", amount: "", note: "" });
   const [savingTx, setSavingTx] = useState(false);
 
@@ -283,8 +283,8 @@ const [formData, setFormData] = useState({
     setSavingTx(true);
     try {
       const { error } = await supabase.from("salary_transactions").insert({
-        employee_id: selectedTxEmployee.id,
-        salary_month_id: selectedTxEmployee.thisMonthRecordId,
+        employee_id: selectedTxEmployee?.id as string,
+        salary_month_id: selectedTxEmployee?.thisMonthRecordId as string,
         date: new Date().toISOString().split("T")[0],
         type: txFormData.type,
         amount: Number(txFormData.amount),
@@ -294,10 +294,10 @@ const [formData, setFormData] = useState({
       toast({ title: "Success", description: "Transaction added successfully." });
       setIsTxModalOpen(false);
       mutate();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: error.message || "Failed to add transaction",
+        description: (error as Error).message || "Failed to add transaction",
         variant: "destructive",
       });
     } finally {
@@ -665,7 +665,7 @@ const [formData, setFormData] = useState({
                   </tr>
                 </thead>
                 <tbody>
-                  {currentMonthTransactions.map((tx, idx) => (
+                  {currentMonthTransactions.map((tx) => (
                     <tr key={tx.id} className="border-b border-[#1e3464]/50 hover:bg-[#162040] transition-colors">
                       <td className="px-4 py-3 text-[#e2e8f0]">{new Date(tx.date).toLocaleDateString()}</td>
                       <td className="px-4 py-3 font-medium text-white">{tx.employees?.name}</td>
@@ -695,7 +695,7 @@ const [formData, setFormData] = useState({
             <DialogHeader>
               <DialogTitle className="text-lg font-bold text-white">Add Transaction</DialogTitle>
               <p className="text-[#8faac3] text-sm mt-1">
-                For {selectedTxEmployee?.name}
+                For {selectedTxEmployee?.name as string}
               </p>
             </DialogHeader>
           </div>

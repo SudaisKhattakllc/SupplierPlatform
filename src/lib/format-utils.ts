@@ -159,9 +159,12 @@ function drawSummaryBlock(
   });
 }
 
+type TxRecord = { employee_id: string; salary_month_id: string; type: string; amount: number };
+type EmpRecord = { id: string; name: string; job_title?: string; base_salary_sar: number; hasMonthRecord: boolean; thisMonthRecordId?: string };
+
 export const downloadPayslipsPDF = (
-  employees: any[],
-  transactions: any[],
+  employees: EmpRecord[],
+  transactions: TxRecord[],
   month: number,
   year: number
 ) => {
@@ -196,9 +199,9 @@ export const downloadPayslipsPDF = (
   // Summary Table
   const tableData = validEmployees.map((emp, i) => {
     // Total Advances (Employee Owes)
-    const empTransactions = transactions?.filter((t: any) => t.employee_id === emp.id && t.salary_month_id === emp.thisMonthRecordId) || [];
-    const advances = empTransactions.filter((t: any) => t.type === 'advance').reduce((sum: number, t: any) => sum + t.amount, 0);
-    const payments = empTransactions.filter((t: any) => t.type === 'payment').reduce((sum: number, t: any) => sum + t.amount, 0);
+    const empTransactions = transactions?.filter((t) => t.employee_id === emp.id && t.salary_month_id === emp.thisMonthRecordId) || [];
+    const advances = empTransactions.filter((t) => t.type === 'advance').reduce((sum: number, t) => sum + t.amount, 0);
+    const payments = empTransactions.filter((t) => t.type === 'payment').reduce((sum: number, t) => sum + t.amount, 0);
     
     const balance = emp.base_salary_sar - advances + payments;
 
